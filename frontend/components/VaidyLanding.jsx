@@ -1339,7 +1339,7 @@ function PrivacyTrustSection() {
             fontFamily: "'DM Sans', sans-serif",
           }}
         >
-          Built by doctors and engineers who believe health data is sacred.
+          Built by engineers who believe health data is sacred.
         </motion.p>
       </div>
     </section>
