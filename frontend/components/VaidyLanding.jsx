@@ -1407,7 +1407,7 @@ function Footer() {
               onMouseEnter={e => e.target.style.color = "#fff"} onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.35)"}>{label}</Link>
           ))}
         </div>
-        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Sans', sans-serif" }}>© 2025 Vaidy. Built for India.</p>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Sans', sans-serif" }}>© 2026 Vaidy. Built for India.</p>
       </div>
     </footer>
   );
