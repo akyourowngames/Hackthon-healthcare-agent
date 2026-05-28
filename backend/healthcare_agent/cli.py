@@ -11,6 +11,7 @@ if __package__ in (None, ""):
 from extractor.main import run_pipeline
 from extractor.utils import normalize_label, read_colon_bullets
 
+from healthcare_agent.chat import chat_response
 from healthcare_agent.config import load_agent_settings
 from healthcare_agent.ingest import ensure_agent_folders, process_input_folder
 from healthcare_agent.store import (
@@ -96,6 +97,7 @@ def handle_status(_args: argparse.Namespace) -> int:
     print(f"local_primary_embeddings: {settings.local_primary}")
     print(f"onnx_model_repo: {settings.local_model_repo}")
     print(f"nvidia_embedding_fallback: {settings.nvidia_model}")
+    print(f"chat_model: {settings.chat_model}")
     print(f"stored_reports: {report_count}")
     return 0
 
@@ -187,7 +189,8 @@ def handle_search(args: argparse.Namespace) -> int:
 
 
 def handle_ask(args: argparse.Namespace) -> int:
-    print(answer_question(args.query, limit=args.limit))
+    result = chat_response(args.query, force_report_context=True)
+    print(result.text)
     return 0
 
 
@@ -196,6 +199,7 @@ def run_agent_shell() -> int:
     ensure_agent_folders(settings)
     initialize_database(settings)
     commands = load_agent_commands()
+    history: list[dict[str, str]] = []
     print("Vaidy agent is ready.")
     print(f"Put reports or documents in: {settings.input_dir}")
     print(f"Extraction results save to: {settings.default_output_dir}")
@@ -208,12 +212,17 @@ def run_agent_shell() -> int:
             return 0
         if not raw:
             continue
-        result = handle_agent_message(raw, settings, commands)
+        result = handle_agent_message(raw, settings, commands, history)
         if result == "exit":
             return 0
 
 
-def handle_agent_message(raw: str, settings, commands: dict[str, list[str]]) -> str:
+def handle_agent_message(
+    raw: str,
+    settings,
+    commands: dict[str, list[str]],
+    history: list[dict[str, str]] | None = None,
+) -> str:
     command, value = resolve_agent_command(raw, commands)
     if command == "exit":
         print("Goodbye.")
@@ -249,10 +258,21 @@ def handle_agent_message(raw: str, settings, commands: dict[str, list[str]]) -> 
         if not value:
             print("Ask a question after /ask.")
             return "handled"
-        handle_ask(argparse.Namespace(query=value, limit=None))
+        result = chat_response(value, settings=settings, history=history or [], force_report_context=True)
+        print(result.text)
+        remember_turn(history, value, result.text)
         return "handled"
-    print(answer_question(raw, settings=settings))
+    result = chat_response(raw, settings=settings, history=history or [])
+    print(result.text)
+    remember_turn(history, raw, result.text)
     return "handled"
+
+
+def remember_turn(history: list[dict[str, str]] | None, user_text: str, assistant_text: str) -> None:
+    if history is None:
+        return
+    history.append({"role": "user", "content": user_text})
+    history.append({"role": "assistant", "content": assistant_text})
 
 
 def resolve_agent_command(raw: str, commands: dict[str, list[str]]) -> tuple[str, str]:

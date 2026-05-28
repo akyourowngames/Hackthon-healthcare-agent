@@ -23,3 +23,15 @@ code.
 - nvidia_model: nvidia/nv-embed-v1
 - timeout_seconds: 12
 - search_limit: 5
+
+## Chat
+
+- model: meta/llama-4-maverick-17b-128e-instruct
+- fallback_model: nvidia/nemotron-mini-4b-instruct
+- timeout_seconds: 60
+- max_tokens: 700
+- temperature: 0.3
+- history_messages: 8
+- evidence_limit: 5
+- report_context_min_chars: 4
+- report_context_margin: 0.05

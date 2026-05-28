@@ -33,6 +33,15 @@ def temp_settings(root: Path) -> AgentSettings:
         search_limit=3,
         nvidia_api_key="",
         nvidia_base_url="https://integrate.api.nvidia.com/v1",
+        chat_model="meta/llama-4-maverick-17b-128e-instruct",
+        chat_fallback_model="nvidia/nemotron-mini-4b-instruct",
+        chat_timeout_seconds=1,
+        chat_max_tokens=80,
+        chat_temperature=0.3,
+        chat_history_messages=4,
+        chat_evidence_limit=3,
+        chat_report_context_min_chars=4,
+        chat_report_context_margin=0.05,
     )
 
 
@@ -170,6 +179,26 @@ class HealthcareAgentTests(unittest.TestCase):
             finally:
                 os.environ.clear()
                 os.environ.update(previous)
+
+    def test_shell_chat_uses_model_for_casual_message(self):
+        settings = temp_settings(Path(tempfile.mkdtemp()))
+        history = []
+        commands = cli.load_agent_commands()
+        with patch("healthcare_agent.cli.chat_response") as chat:
+            chat.return_value.text = "Hi, I am here."
+            self.assertEqual(cli.handle_agent_message("hi", settings, commands, history), "handled")
+        self.assertEqual(chat.call_args.args[0], "hi")
+        self.assertNotIn("force_report_context", chat.call_args.kwargs)
+        self.assertEqual(history[-1]["content"], "Hi, I am here.")
+
+    def test_ask_command_forces_report_context_chat(self):
+        settings = temp_settings(Path(tempfile.mkdtemp()))
+        history = []
+        commands = cli.load_agent_commands()
+        with patch("healthcare_agent.cli.chat_response") as chat:
+            chat.return_value.text = "The report shows pending items."
+            self.assertEqual(cli.handle_agent_message("/ask what is pending", settings, commands, history), "handled")
+        self.assertTrue(chat.call_args.kwargs["force_report_context"])
 
 
 if __name__ == "__main__":

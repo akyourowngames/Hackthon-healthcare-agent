@@ -22,6 +22,8 @@ This backend implements the plan from `todo.md`.
 - Terminal agent shell: running `python healthcare_agent\cli.py` with no command opens the agent loop instead of failing with an argparse error.
 - Input and output folders: reports and documents can be placed in `input/`; processing saves extractor/document artifacts under `output/`.
 - Input processing: `healthcare_agent/ingest.py` scans the configured input folder, skips already stored sources, extracts PDFs, imports JSON, and stores TXT or MD documents for read-back.
+- Maverick-backed chat: `healthcare_agent/chat.py` uses the configured NVIDIA chat model for normal conversation, with `meta/llama-4-maverick-17b-128e-instruct` as the default.
+- Evidence-aware answers: normal greetings and casual turns no longer dump report chunks; report/document questions get local evidence attached before the chat model responds.
 - Terminal CLI: `healthcare_agent/cli.py` provides the shell plus `status`, `process-input`, `ingest`, `import-json`, `list`, `show`, `search`, and `ask`.
 - KING reference: the local-first ONNX then NVIDIA fallback shape follows the pattern inspected in `C:\Users\anime\3D Objects\KING\agent\embedder.py`, adapted to Vaidy's smaller backend.
 

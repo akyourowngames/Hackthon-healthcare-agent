@@ -37,6 +37,9 @@ subcommand first.
   `output/`.
 - Stored report memory lives in SQLite and can be read back with `list reports`,
   `show report <id>`, search questions, or normal questions.
+- Normal chat uses the configured NVIDIA chat model, defaulting to Maverick.
+- Casual messages like `hi` chat normally; report questions attach local report
+  evidence before the model answers.
 
 ## Diagnosis — Two Separate Problems
 

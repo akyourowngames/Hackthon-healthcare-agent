@@ -26,6 +26,15 @@ class AgentSettings:
     search_limit: int
     nvidia_api_key: str
     nvidia_base_url: str
+    chat_model: str
+    chat_fallback_model: str
+    chat_timeout_seconds: float
+    chat_max_tokens: int
+    chat_temperature: float
+    chat_history_messages: int
+    chat_evidence_limit: int
+    chat_report_context_min_chars: int
+    chat_report_context_margin: float
 
 
 def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
@@ -51,11 +60,20 @@ def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
         search_limit=parse_int(_env_value("VAIDY_AGENT_SEARCH_LIMIT", values["embeddings.search_limit"])),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY", ""),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+        chat_model=_first_env_value(("VAIDY_CHAT_MODEL", "NVIDIA_CHAT_MODEL"), values["chat.model"]),
+        chat_fallback_model=_first_env_value(("VAIDY_CHAT_FALLBACK_MODEL", "NVIDIA_CHAT_FALLBACK_MODEL"), values["chat.fallback_model"]),
+        chat_timeout_seconds=parse_float(_env_value("VAIDY_CHAT_TIMEOUT_SECONDS", values["chat.timeout_seconds"])),
+        chat_max_tokens=parse_int(_env_value("VAIDY_CHAT_MAX_TOKENS", values["chat.max_tokens"])),
+        chat_temperature=parse_float(_env_value("VAIDY_CHAT_TEMPERATURE", values["chat.temperature"])),
+        chat_history_messages=parse_int(_env_value("VAIDY_CHAT_HISTORY_MESSAGES", values["chat.history_messages"])),
+        chat_evidence_limit=parse_int(_env_value("VAIDY_CHAT_EVIDENCE_LIMIT", values["chat.evidence_limit"])),
+        chat_report_context_min_chars=parse_int(_env_value("VAIDY_CHAT_REPORT_CONTEXT_MIN_CHARS", values["chat.report_context_min_chars"])),
+        chat_report_context_margin=parse_float(_env_value("VAIDY_CHAT_REPORT_CONTEXT_MARGIN", values["chat.report_context_margin"])),
     )
 
 
 def _policy_values(path: Path) -> dict[str, str]:
-    entries = read_colon_bullets(path, {"Storage", "Embeddings"})
+    entries = read_colon_bullets(path, {"Storage", "Embeddings", "Chat"})
     values: dict[str, str] = {}
     for key, value, section in entries:
         values[f"{section}.{key.strip().lower()}"] = value
@@ -67,6 +85,14 @@ def _env_value(name: str, fallback: str) -> str:
     if value is None or not value.strip():
         return fallback
     return value.strip()
+
+
+def _first_env_value(names: tuple[str, ...], fallback: str) -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return fallback
 
 
 def _bool_value(name: str, fallback: str) -> bool:
