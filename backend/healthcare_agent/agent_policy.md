@@ -27,10 +27,16 @@ code.
 ## Chat
 
 - model: meta/llama-4-maverick-17b-128e-instruct
+- fast_model: meta/llama-3.1-8b-instruct
+- report_model: meta/llama-3.1-8b-instruct
 - fallback_model: nvidia/nemotron-mini-4b-instruct
 - timeout_seconds: 60
 - max_tokens: 700
 - temperature: 0.3
+- streaming: true
+- fast_lane_for_casual: true
+- fast_lane_for_reports: true
+- warmup_on_start: true
 - history_messages: 8
 - evidence_limit: 5
 - report_context_min_chars: 4

@@ -38,6 +38,10 @@ subcommand first.
 - Stored report memory lives in SQLite and can be read back with `list reports`,
   `show report <id>`, search questions, or normal questions.
 - Normal chat uses the configured NVIDIA chat model, defaulting to Maverick.
+- Chat streams chunks as soon as NVIDIA returns them.
+- Low-latency fast lane uses a smaller NVIDIA model for smooth casual and
+  report answers while keeping Maverick configured as the deep model.
+- Shell startup warms the fast model in the background.
 - Casual messages like `hi` chat normally; report questions attach local report
   evidence before the model answers.
 

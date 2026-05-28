@@ -34,10 +34,16 @@ def temp_settings(root: Path) -> AgentSettings:
         nvidia_api_key="",
         nvidia_base_url="https://integrate.api.nvidia.com/v1",
         chat_model="meta/llama-4-maverick-17b-128e-instruct",
+        chat_fast_model="meta/llama-3.1-8b-instruct",
+        chat_report_model="meta/llama-3.1-8b-instruct",
         chat_fallback_model="nvidia/nemotron-mini-4b-instruct",
         chat_timeout_seconds=1,
         chat_max_tokens=80,
         chat_temperature=0.3,
+        chat_streaming=True,
+        chat_fast_lane_for_casual=True,
+        chat_fast_lane_for_reports=True,
+        chat_warmup_on_start=False,
         chat_history_messages=4,
         chat_evidence_limit=3,
         chat_report_context_min_chars=4,
@@ -188,7 +194,7 @@ class HealthcareAgentTests(unittest.TestCase):
             chat.return_value.text = "Hi, I am here."
             self.assertEqual(cli.handle_agent_message("hi", settings, commands, history), "handled")
         self.assertEqual(chat.call_args.args[0], "hi")
-        self.assertNotIn("force_report_context", chat.call_args.kwargs)
+        self.assertIn("on_chunk", chat.call_args.kwargs)
         self.assertEqual(history[-1]["content"], "Hi, I am here.")
 
     def test_ask_command_forces_report_context_chat(self):
@@ -199,6 +205,36 @@ class HealthcareAgentTests(unittest.TestCase):
             chat.return_value.text = "The report shows pending items."
             self.assertEqual(cli.handle_agent_message("/ask what is pending", settings, commands, history), "handled")
         self.assertTrue(chat.call_args.kwargs["force_report_context"])
+
+    def test_print_chat_response_streams_chunks(self):
+        with patch("healthcare_agent.cli.chat_response") as chat:
+            def fake_response(_message, on_chunk=None, **_kwargs):
+                if on_chunk:
+                    on_chunk("Hel")
+                    on_chunk("lo")
+                from healthcare_agent.chat import ChatResult
+
+                return ChatResult("Hello", False, "test", [])
+
+            chat.side_effect = fake_response
+            result = cli.print_chat_response("hi")
+        self.assertEqual(result.text, "Hello")
+
+    def test_casual_chat_selects_fast_lane_model(self):
+        settings = temp_settings(Path(tempfile.mkdtemp()))
+        from healthcare_agent.chat import select_chat_model
+
+        self.assertEqual(select_chat_model(settings, use_report_context=False), settings.chat_fast_model)
+        self.assertEqual(select_chat_model(settings, use_report_context=True), settings.chat_report_model)
+
+    def test_chat_warmup_uses_fast_model(self):
+        settings = temp_settings(Path(tempfile.mkdtemp()))
+        warm_settings = settings.__class__(**{**settings.__dict__, "nvidia_api_key": "key"})
+        with patch("healthcare_agent.chat.call_chat_model") as call:
+            from healthcare_agent.chat import warm_chat_model
+
+            warm_chat_model(warm_settings)
+        self.assertEqual(call.call_args.kwargs["model"], settings.chat_fast_model)
 
 
 if __name__ == "__main__":

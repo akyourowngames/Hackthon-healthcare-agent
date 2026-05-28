@@ -27,10 +27,16 @@ class AgentSettings:
     nvidia_api_key: str
     nvidia_base_url: str
     chat_model: str
+    chat_fast_model: str
+    chat_report_model: str
     chat_fallback_model: str
     chat_timeout_seconds: float
     chat_max_tokens: int
     chat_temperature: float
+    chat_streaming: bool
+    chat_fast_lane_for_casual: bool
+    chat_fast_lane_for_reports: bool
+    chat_warmup_on_start: bool
     chat_history_messages: int
     chat_evidence_limit: int
     chat_report_context_min_chars: int
@@ -61,10 +67,16 @@ def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
         nvidia_api_key=os.getenv("NVIDIA_API_KEY", ""),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
         chat_model=_first_env_value(("VAIDY_CHAT_MODEL", "NVIDIA_CHAT_MODEL"), values["chat.model"]),
+        chat_fast_model=_first_env_value(("VAIDY_CHAT_FAST_MODEL", "NVIDIA_FAST_MODEL"), values["chat.fast_model"]),
+        chat_report_model=_first_env_value(("VAIDY_CHAT_REPORT_MODEL", "NVIDIA_REPORT_MODEL"), values["chat.report_model"]),
         chat_fallback_model=_first_env_value(("VAIDY_CHAT_FALLBACK_MODEL", "NVIDIA_CHAT_FALLBACK_MODEL"), values["chat.fallback_model"]),
         chat_timeout_seconds=parse_float(_env_value("VAIDY_CHAT_TIMEOUT_SECONDS", values["chat.timeout_seconds"])),
         chat_max_tokens=parse_int(_env_value("VAIDY_CHAT_MAX_TOKENS", values["chat.max_tokens"])),
         chat_temperature=parse_float(_env_value("VAIDY_CHAT_TEMPERATURE", values["chat.temperature"])),
+        chat_streaming=_bool_value("VAIDY_CHAT_STREAMING", values["chat.streaming"]),
+        chat_fast_lane_for_casual=_bool_value("VAIDY_CHAT_FAST_LANE_FOR_CASUAL", values["chat.fast_lane_for_casual"]),
+        chat_fast_lane_for_reports=_bool_value("VAIDY_CHAT_FAST_LANE_FOR_REPORTS", values["chat.fast_lane_for_reports"]),
+        chat_warmup_on_start=_bool_value("VAIDY_CHAT_WARMUP_ON_START", values["chat.warmup_on_start"]),
         chat_history_messages=parse_int(_env_value("VAIDY_CHAT_HISTORY_MESSAGES", values["chat.history_messages"])),
         chat_evidence_limit=parse_int(_env_value("VAIDY_CHAT_EVIDENCE_LIMIT", values["chat.evidence_limit"])),
         chat_report_context_min_chars=parse_int(_env_value("VAIDY_CHAT_REPORT_CONTEXT_MIN_CHARS", values["chat.report_context_min_chars"])),

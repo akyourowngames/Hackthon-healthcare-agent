@@ -96,9 +96,9 @@ python -m healthcare_agent.cli ask "what biomarkers are high or low"
 For the terminal agent flow, place reports or documents in `backend/input/`,
 type `process input`, and read back the saved local memory with `list reports`,
 `show report <id>`, search, or normal questions. Artifacts are written under
-`backend/output/`. Normal chat uses the configured NVIDIA chat model, with
-Maverick as the default, while report questions attach local evidence before
-answering.
+`backend/output/`. Normal chat streams from the configured NVIDIA chat model.
+Maverick remains available as the deep model, while the default fast lane uses
+`meta/llama-3.1-8b-instruct` for smoother casual and report answers.
 
 ## Roadmap
 

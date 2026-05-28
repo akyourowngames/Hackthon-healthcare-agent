@@ -54,8 +54,10 @@ When the shell opens, put report files in `input/` and type `process input`.
 Supported files are configured in `healthcare_agent/agent_policy.md`; the
 default set is PDF, JSON, TXT, and MD. Extraction artifacts are written to
 `output/`, while searchable report memory lives in local SQLite. Normal chat
-uses the configured NVIDIA chat model, with Maverick as the default; report
-evidence is attached only for report/document questions.
+streams token-by-token from the configured NVIDIA chat model. Maverick remains
+configured as the deep model, while the default fast lane uses
+`meta/llama-3.1-8b-instruct` for low-latency casual and report answers.
+Report evidence is attached only for report/document questions.
 
 The same behavior is also available as explicit commands:
 
@@ -74,6 +76,7 @@ Embedding order is local first:
 2. NVIDIA embedding API fallback when the local ONNX path is unavailable and `NVIDIA_API_KEY` is configured.
 3. Local hash vectors as the final offline fallback so the CLI remains usable.
 
-Agent input, output, storage, ONNX model, chat model, cache path, embedding
-dimension, and search limits live in `healthcare_agent/agent_policy.md`, with
-`.env` overrides for local machine settings.
+Agent input, output, storage, ONNX model, chat models, streaming, warmup, cache
+path, embedding dimension, and search limits live in
+`healthcare_agent/agent_policy.md`, with `.env` overrides for local machine
+settings.

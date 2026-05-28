@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -11,7 +12,7 @@ if __package__ in (None, ""):
 from extractor.main import run_pipeline
 from extractor.utils import normalize_label, read_colon_bullets
 
-from healthcare_agent.chat import chat_response
+from healthcare_agent.chat import chat_response, warm_chat_model
 from healthcare_agent.config import load_agent_settings
 from healthcare_agent.ingest import ensure_agent_folders, process_input_folder
 from healthcare_agent.store import (
@@ -27,6 +28,7 @@ from healthcare_agent.store import (
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_output_encoding()
     parser = build_parser()
     args = parser.parse_args(argv)
     if not hasattr(args, "handler"):
@@ -98,6 +100,9 @@ def handle_status(_args: argparse.Namespace) -> int:
     print(f"onnx_model_repo: {settings.local_model_repo}")
     print(f"nvidia_embedding_fallback: {settings.nvidia_model}")
     print(f"chat_model: {settings.chat_model}")
+    print(f"chat_fast_model: {settings.chat_fast_model}")
+    print(f"chat_report_model: {settings.chat_report_model}")
+    print(f"chat_streaming: {settings.chat_streaming}")
     print(f"stored_reports: {report_count}")
     return 0
 
@@ -189,8 +194,9 @@ def handle_search(args: argparse.Namespace) -> int:
 
 
 def handle_ask(args: argparse.Namespace) -> int:
-    result = chat_response(args.query, force_report_context=True)
-    print(result.text)
+    result = print_chat_response(args.query, force_report_context=True)
+    if not result.text:
+        print()
     return 0
 
 
@@ -200,6 +206,7 @@ def run_agent_shell() -> int:
     initialize_database(settings)
     commands = load_agent_commands()
     history: list[dict[str, str]] = []
+    start_chat_warmup(settings)
     print("Vaidy agent is ready.")
     print(f"Put reports or documents in: {settings.input_dir}")
     print(f"Extraction results save to: {settings.default_output_dir}")
@@ -258,14 +265,48 @@ def handle_agent_message(
         if not value:
             print("Ask a question after /ask.")
             return "handled"
-        result = chat_response(value, settings=settings, history=history or [], force_report_context=True)
-        print(result.text)
+        result = print_chat_response(value, settings=settings, history=history or [], force_report_context=True)
         remember_turn(history, value, result.text)
         return "handled"
-    result = chat_response(raw, settings=settings, history=history or [])
-    print(result.text)
+    result = print_chat_response(raw, settings=settings, history=history or [])
     remember_turn(history, raw, result.text)
     return "handled"
+
+
+def print_chat_response(message: str, **kwargs):
+    streamed = False
+
+    def on_chunk(chunk: str) -> None:
+        nonlocal streamed
+        streamed = True
+        print(chunk, end="", flush=True)
+
+    result = chat_response(message, on_chunk=on_chunk, **kwargs)
+    if streamed:
+        print()
+    else:
+        print(result.text)
+    return result
+
+
+def start_chat_warmup(settings) -> None:
+    if not getattr(settings, "chat_warmup_on_start", False):
+        return
+    thread = threading.Thread(target=warm_chat_model, args=(settings,), daemon=True)
+    thread.start()
+
+
+def configure_output_encoding() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:
+                pass
 
 
 def remember_turn(history: list[dict[str, str]] | None, user_text: str, assistant_text: str) -> None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,6 +24,7 @@ def chat_response(
     settings: AgentSettings | None = None,
     history: list[dict[str, str]] | None = None,
     force_report_context: bool = False,
+    on_chunk=None,
 ) -> ChatResult:
     active_settings = settings or load_agent_settings()
     evidence: list[SearchHit] = []
@@ -31,7 +32,8 @@ def chat_response(
     if use_context:
         evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings)
     messages = build_chat_messages(message, active_settings, history or [], evidence)
-    text, model = call_chat_model(messages, active_settings)
+    selected_model = select_chat_model(active_settings, use_context)
+    text, model = call_chat_model(messages, active_settings, on_chunk=on_chunk, model=selected_model)
     return ChatResult(text=text, used_report_context=bool(evidence), model=model, evidence=evidence)
 
 
@@ -46,14 +48,16 @@ def should_use_report_context(message: str, settings: AgentSettings | None = Non
     if not report_text or not casual_text:
         return False
     try:
-        vectors = np.asarray(embed_texts([text, report_text, casual_text], active_settings).vectors, dtype=np.float32)
+        policy_vectors = intent_policy_vectors(active_settings, report_text, casual_text)
+        query_vector = np.asarray(embed_texts(text, active_settings).vectors, dtype=np.float32).reshape(-1)
     except Exception:
         return False
-    if vectors.ndim != 2 or vectors.shape[0] < 3:
+    if policy_vectors.ndim != 2 or policy_vectors.shape[0] < 2:
         return False
-    query = vectors[0]
-    report_score = float(np.dot(query, vectors[1]))
-    casual_score = float(np.dot(query, vectors[2]))
+    query, report_vector = align_pair(query_vector, policy_vectors[0])
+    query, casual_vector = align_pair(query, policy_vectors[1])
+    report_score = float(np.dot(query, report_vector))
+    casual_score = float(np.dot(query, casual_vector))
     return report_score >= casual_score + active_settings.chat_report_context_margin
 
 
@@ -76,36 +80,117 @@ def build_chat_messages(
     return messages
 
 
-def call_chat_model(messages: list[dict[str, str]], settings: AgentSettings) -> tuple[str, str]:
+def select_chat_model(settings: AgentSettings, use_report_context: bool) -> str:
+    if use_report_context and settings.chat_fast_lane_for_reports and settings.chat_report_model:
+        return settings.chat_report_model
+    if not use_report_context and settings.chat_fast_lane_for_casual and settings.chat_fast_model:
+        return settings.chat_fast_model
+    return settings.chat_model
+
+
+def call_chat_model(
+    messages: list[dict[str, str]],
+    settings: AgentSettings,
+    on_chunk=None,
+    model: str | None = None,
+) -> tuple[str, str]:
     try:
-        from openai import APIError, APITimeoutError, OpenAI, RateLimitError
+        from openai import APIError, APITimeoutError, RateLimitError
     except ImportError:
         return "The OpenAI client package is missing, so I cannot reach NVIDIA chat yet.", "unavailable"
     if not settings.nvidia_api_key:
         return "NVIDIA_API_KEY is missing, so I cannot use the chat model yet.", "unavailable"
-    client = OpenAI(
-        api_key=settings.nvidia_api_key,
-        base_url=settings.nvidia_base_url,
-        timeout=settings.chat_timeout_seconds,
-        max_retries=1,
-    )
-    models = [settings.chat_model]
+    client = chat_client(settings.nvidia_api_key, settings.nvidia_base_url, settings.chat_timeout_seconds)
+    models = [model or settings.chat_model]
     if settings.chat_fallback_model and settings.chat_fallback_model not in models:
         models.append(settings.chat_fallback_model)
     errors: list[str] = []
     for model in models:
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=settings.chat_temperature,
-                max_tokens=settings.chat_max_tokens,
-            )
-            content = response.choices[0].message.content or ""
+            if settings.chat_streaming and on_chunk is not None:
+                content = stream_chat_completion(client, model, messages, settings, on_chunk)
+            else:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=settings.chat_temperature,
+                    max_tokens=settings.chat_max_tokens,
+                )
+                content = response.choices[0].message.content or ""
             return content.strip() or "I am here.", model
         except (APIError, APITimeoutError, RateLimitError) as exc:
             errors.append(f"{model}: {exc.__class__.__name__}")
     return "NVIDIA chat failed: " + "; ".join(errors), "unavailable"
+
+
+@lru_cache(maxsize=4)
+def chat_client(api_key: str, base_url: str, timeout_seconds: float):
+    from openai import OpenAI
+
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=timeout_seconds,
+        max_retries=1,
+    )
+
+
+def warm_chat_model(settings: AgentSettings | None = None) -> None:
+    active_settings = settings or load_agent_settings()
+    if not active_settings.nvidia_api_key:
+        return
+    warm_settings = replace(
+        active_settings,
+        chat_model=active_settings.chat_fast_model or active_settings.chat_model,
+        chat_fallback_model="",
+        chat_max_tokens=min(active_settings.chat_max_tokens, 12),
+        chat_streaming=False,
+    )
+    messages = [{"role": "user", "content": "Reply with only ok."}]
+    call_chat_model(messages, warm_settings, model=warm_settings.chat_model)
+
+
+def stream_chat_completion(client, model: str, messages: list[dict[str, str]], settings: AgentSettings, on_chunk) -> str:
+    chunks: list[str] = []
+    stream = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=settings.chat_temperature,
+        max_tokens=settings.chat_max_tokens,
+        stream=True,
+    )
+    for event in stream:
+        if not event.choices:
+            continue
+        delta = event.choices[0].delta
+        chunk = getattr(delta, "content", None)
+        if not chunk:
+            continue
+        text = str(chunk)
+        chunks.append(text)
+        on_chunk(text)
+    return "".join(chunks)
+
+
+@lru_cache(maxsize=8)
+def intent_policy_vectors(settings: AgentSettings, report_text: str, casual_text: str) -> np.ndarray:
+    vectors = embed_texts([report_text, casual_text], settings).vectors
+    return np.asarray(vectors, dtype=np.float32)
+
+
+def align_pair(first: np.ndarray, second: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    a = np.asarray(first, dtype=np.float32).reshape(-1)
+    b = np.asarray(second, dtype=np.float32).reshape(-1)
+    if a.shape[0] == b.shape[0]:
+        return a, b
+    dim = max(a.shape[0], b.shape[0])
+    return pad_vector(a, dim), pad_vector(b, dim)
+
+
+def pad_vector(vector: np.ndarray, dim: int) -> np.ndarray:
+    if vector.shape[0] >= dim:
+        return vector[:dim]
+    return np.pad(vector, (0, dim - vector.shape[0]))
 
 
 def format_evidence(hits: list[SearchHit]) -> str:

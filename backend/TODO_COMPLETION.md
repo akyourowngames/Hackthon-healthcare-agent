@@ -23,6 +23,9 @@ This backend implements the plan from `todo.md`.
 - Input and output folders: reports and documents can be placed in `input/`; processing saves extractor/document artifacts under `output/`.
 - Input processing: `healthcare_agent/ingest.py` scans the configured input folder, skips already stored sources, extracts PDFs, imports JSON, and stores TXT or MD documents for read-back.
 - Maverick-backed chat: `healthcare_agent/chat.py` uses the configured NVIDIA chat model for normal conversation, with `meta/llama-4-maverick-17b-128e-instruct` as the default.
+- Smooth streaming: terminal chat now streams chunks as they arrive instead of waiting for the full model response.
+- Low-latency fast lane: casual and report answers use the configured fast model by default, while Maverick remains available as the deep model in markdown and `.env`.
+- Warm startup: the shell can warm the fast chat model in a background thread so the first real user reply reaches the warmed path sooner.
 - Evidence-aware answers: normal greetings and casual turns no longer dump report chunks; report/document questions get local evidence attached before the chat model responds.
 - Terminal CLI: `healthcare_agent/cli.py` provides the shell plus `status`, `process-input`, `ingest`, `import-json`, `list`, `show`, `search`, and `ask`.
 - KING reference: the local-first ONNX then NVIDIA fallback shape follows the pattern inspected in `C:\Users\anime\3D Objects\KING\agent\embedder.py`, adapted to Vaidy's smaller backend.
@@ -45,6 +48,15 @@ python -m healthcare_agent.cli ingest samples/report1.pdf --local-only --output-
 python -m healthcare_agent.cli list
 python -m healthcare_agent.cli search cholesterol --limit 3
 python -m healthcare_agent.cli ask "what biomarkers are high or low" --limit 5
+```
+
+Live streaming latency probe after warmup:
+
+```bash
+warmup_seconds=3.148
+first_chunk_seconds=0.671
+model=meta/llama-3.1-8b-instruct
+total_seconds=0.794
 ```
 
 With `NVIDIA_API_KEY` configured, this was also verified from the source backend
