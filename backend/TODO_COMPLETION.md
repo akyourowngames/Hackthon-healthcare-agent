@@ -19,7 +19,10 @@ This backend implements the plan from `todo.md`.
 - NVIDIA embedding fallback: the same embedder uses `NVIDIA_EMBEDDING_MODEL` through the NVIDIA-compatible embeddings API only when local ONNX is unavailable.
 - ONNX embedding runtime: the backend depends on `onnxruntime`, `tokenizers`, and `huggingface-hub`; it does not add a separate embedding framework runtime.
 - Local database: `healthcare_agent/store.py` stores reports, chunks, vectors, and JSON payloads in SQLite plus local `storage/reports`.
-- Terminal CLI: `healthcare_agent/cli.py` provides `status`, `ingest`, `import-json`, `list`, `show`, `search`, and `ask`.
+- Terminal agent shell: running `python healthcare_agent\cli.py` with no command opens the agent loop instead of failing with an argparse error.
+- Input and output folders: reports and documents can be placed in `input/`; processing saves extractor/document artifacts under `output/`.
+- Input processing: `healthcare_agent/ingest.py` scans the configured input folder, skips already stored sources, extracts PDFs, imports JSON, and stores TXT or MD documents for read-back.
+- Terminal CLI: `healthcare_agent/cli.py` provides the shell plus `status`, `process-input`, `ingest`, `import-json`, `list`, `show`, `search`, and `ask`.
 - KING reference: the local-first ONNX then NVIDIA fallback shape follows the pattern inspected in `C:\Users\anime\3D Objects\KING\agent\embedder.py`, adapted to Vaidy's smaller backend.
 
 ## Verification
@@ -28,13 +31,15 @@ Run from `backend/`:
 
 ```bash
 python -m pytest -q
-python -m compileall -q extractor tests
-python -m extractor.main samples/report1.pdf --local-only --output-dir outputs/verify-report1-local
-python -m extractor.main samples/report2.pdf --local-only --output-dir outputs/verify-report2-local
-python -m extractor.main samples/report3.pdf --local-only --output-dir outputs/verify-report3-local
-python -m extractor.main samples/scanned_report.pdf --local-only --output-dir outputs/verify-scanned-local
+python -m compileall -q extractor healthcare_agent tests
+python -m extractor.main samples/report1.pdf --local-only --output-dir output/verify-report1-local
+python -m extractor.main samples/report2.pdf --local-only --output-dir output/verify-report2-local
+python -m extractor.main samples/report3.pdf --local-only --output-dir output/verify-report3-local
+python -m extractor.main samples/scanned_report.pdf --local-only --output-dir output/verify-scanned-local
 python -m healthcare_agent.cli status
-python -m healthcare_agent.cli ingest samples/report1.pdf --local-only --output-dir outputs/agent-report1-local
+python healthcare_agent/cli.py
+python -m healthcare_agent.cli process-input --local-only
+python -m healthcare_agent.cli ingest samples/report1.pdf --local-only --output-dir output/agent-report1-local
 python -m healthcare_agent.cli list
 python -m healthcare_agent.cli search cholesterol --limit 3
 python -m healthcare_agent.cli ask "what biomarkers are high or low" --limit 5

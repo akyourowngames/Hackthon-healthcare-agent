@@ -11,7 +11,9 @@ from extractor.utils import load_environment, parse_float, parse_int, project_ro
 class AgentSettings:
     database_path: Path
     reports_dir: Path
+    input_dir: Path
     default_output_dir: Path
+    supported_extensions: tuple[str, ...]
     local_primary: bool
     local_model_repo: str
     local_model_file: str
@@ -34,7 +36,9 @@ def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
     return AgentSettings(
         database_path=_path_value("VAIDY_AGENT_DATABASE_PATH", values["storage.database_path"], root),
         reports_dir=_path_value("VAIDY_AGENT_REPORTS_DIR", values["storage.reports_dir"], root),
+        input_dir=_path_value("VAIDY_AGENT_INPUT_DIR", values["storage.input_dir"], root),
         default_output_dir=_path_value("VAIDY_AGENT_OUTPUT_DIR", values["storage.default_output_dir"], root),
+        supported_extensions=_extension_values("VAIDY_AGENT_SUPPORTED_EXTENSIONS", values["storage.supported_extensions"]),
         local_primary=_bool_value("VAIDY_EMBEDDINGS_LOCAL_PRIMARY", values["embeddings.local_primary"]),
         local_model_repo=_env_value("VAIDY_ONNX_MODEL_REPO", values["embeddings.local_model_repo"]),
         local_model_file=_env_value("VAIDY_ONNX_MODEL_FILE", values["embeddings.local_model_file"]),
@@ -68,6 +72,21 @@ def _env_value(name: str, fallback: str) -> str:
 def _bool_value(name: str, fallback: str) -> bool:
     value = _env_value(name, fallback).strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _extension_values(name: str, fallback: str) -> tuple[str, ...]:
+    raw_value = _env_value(name, fallback)
+    values: list[str] = []
+    for separator in (",", ";"):
+        raw_value = raw_value.replace(separator, "|")
+    for item in raw_value.split("|"):
+        extension = item.strip().lower()
+        if not extension:
+            continue
+        if not extension.startswith("."):
+            extension = "." + extension
+        values.append(extension)
+    return tuple(dict.fromkeys(values))
 
 
 def _path_value(name: str, fallback: str, root: Path) -> Path:

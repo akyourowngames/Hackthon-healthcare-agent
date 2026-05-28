@@ -79,7 +79,7 @@ Agent storage and embeddings are controlled through
 cd backend
 python -m pip install -r requirements.txt
 cp .env.example .env
-python -m extractor.main samples/report1.pdf
+python healthcare_agent/cli.py
 ```
 
 Set `NVIDIA_API_KEY` in `backend/.env` for NIM extraction. Without it, use
@@ -87,10 +87,16 @@ Set `NVIDIA_API_KEY` in `backend/.env` for NIM extraction. Without it, use
 
 ```bash
 python -m pytest -q
-python -m extractor.main samples/report1.pdf --local-only
+python -m healthcare_agent.cli process-input --local-only
+python -m extractor.main samples/report1.pdf --local-only --output-dir output/report1
 python -m healthcare_agent.cli ingest samples/report1.pdf --local-only
 python -m healthcare_agent.cli ask "what biomarkers are high or low"
 ```
+
+For the terminal agent flow, place reports or documents in `backend/input/`,
+type `process input`, and read back the saved local memory with `list reports`,
+`show report <id>`, search, or normal questions. Artifacts are written under
+`backend/output/`.
 
 ## Roadmap
 

@@ -7,7 +7,9 @@ code.
 
 - database_path: storage/health_agent.db
 - reports_dir: storage/reports
-- default_output_dir: outputs
+- input_dir: input
+- default_output_dir: output
+- supported_extensions: .pdf | .json | .txt | .md
 
 ## Embeddings
 

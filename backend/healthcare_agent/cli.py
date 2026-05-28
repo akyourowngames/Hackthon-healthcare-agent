@@ -9,8 +9,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from extractor.main import run_pipeline
+from extractor.utils import normalize_label, read_colon_bullets
 
 from healthcare_agent.config import load_agent_settings
+from healthcare_agent.ingest import ensure_agent_folders, process_input_folder
 from healthcare_agent.store import (
     answer_question,
     copy_source_to_storage,
@@ -26,6 +28,8 @@ from healthcare_agent.store import (
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not hasattr(args, "handler"):
+        return run_agent_shell()
     try:
         return int(args.handler(args) or 0)
     except Exception as exc:
@@ -38,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="vaidy-agent",
         description="Terminal AI healthcare agent for local report memory.",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
     status = subparsers.add_parser("status", help="Show local agent storage status.")
     status.set_defaults(handler=handle_status)
@@ -53,6 +57,10 @@ def build_parser() -> argparse.ArgumentParser:
     import_json.add_argument("json_path", help="Path to an existing report JSON file.")
     import_json.add_argument("--source-path", default=None, help="Original source report path when known.")
     import_json.set_defaults(handler=handle_import_json)
+
+    process_input = subparsers.add_parser("process-input", help="Process every supported file in the input folder.")
+    process_input.add_argument("--local-only", action="store_true", help="Skip NIM extraction and use local fallbacks.")
+    process_input.set_defaults(handler=handle_process_input)
 
     list_cmd = subparsers.add_parser("list", help="List stored local reports.")
     list_cmd.set_defaults(handler=handle_list)
@@ -76,12 +84,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_status(_args: argparse.Namespace) -> int:
     settings = load_agent_settings()
+    ensure_agent_folders(settings)
     db_path = initialize_database(settings)
     report_count = len(list_reports(settings))
     print("Vaidy terminal healthcare agent")
     print(f"database: {db_path}")
+    print(f"input_dir: {settings.input_dir}")
     print(f"reports_dir: {settings.reports_dir}")
     print(f"default_output_dir: {settings.default_output_dir}")
+    print(f"supported_extensions: {', '.join(settings.supported_extensions)}")
     print(f"local_primary_embeddings: {settings.local_primary}")
     print(f"onnx_model_repo: {settings.local_model_repo}")
     print(f"nvidia_embedding_fallback: {settings.nvidia_model}")
@@ -113,6 +124,13 @@ def handle_import_json(args: argparse.Namespace) -> int:
     print(f"stored_report_id: {report_id}")
     print(f"json_path: {Path(args.json_path).expanduser().resolve()}")
     return 0
+
+
+def handle_process_input(args: argparse.Namespace) -> int:
+    settings = load_agent_settings()
+    summary = process_input_folder(settings, local_only=args.local_only)
+    print_process_summary(summary)
+    return 1 if summary.failed else 0
 
 
 def handle_list(_args: argparse.Namespace) -> int:
@@ -171,6 +189,128 @@ def handle_search(args: argparse.Namespace) -> int:
 def handle_ask(args: argparse.Namespace) -> int:
     print(answer_question(args.query, limit=args.limit))
     return 0
+
+
+def run_agent_shell() -> int:
+    settings = load_agent_settings()
+    ensure_agent_folders(settings)
+    initialize_database(settings)
+    commands = load_agent_commands()
+    print("Vaidy agent is ready.")
+    print(f"Put reports or documents in: {settings.input_dir}")
+    print(f"Extraction results save to: {settings.default_output_dir}")
+    print("Type naturally, or use /process, /list, /show <id>, /search <query>, /ask <query>, /status, /help, /exit.")
+    while True:
+        try:
+            raw = input("vaidy> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye.")
+            return 0
+        if not raw:
+            continue
+        result = handle_agent_message(raw, settings, commands)
+        if result == "exit":
+            return 0
+
+
+def handle_agent_message(raw: str, settings, commands: dict[str, list[str]]) -> str:
+    command, value = resolve_agent_command(raw, commands)
+    if command == "exit":
+        print("Goodbye.")
+        return "exit"
+    if command == "help":
+        print("Commands: /process, /list, /show <id>, /search <query>, /ask <query>, /status, /help, /exit")
+        print(f"Input folder: {settings.input_dir}")
+        print(f"Output folder: {settings.default_output_dir}")
+        return "handled"
+    if command == "status":
+        handle_status(argparse.Namespace())
+        return "handled"
+    if command == "process_input":
+        summary = process_input_folder(settings, local_only="--local-only" in raw.split())
+        print_process_summary(summary)
+        return "handled"
+    if command == "list_reports":
+        handle_list(argparse.Namespace())
+        return "handled"
+    if command == "show":
+        if not value or not value.isdigit():
+            print("Give me a report id, for example: /show 1")
+            return "handled"
+        handle_show(argparse.Namespace(report_id=int(value)))
+        return "handled"
+    if command == "search":
+        if not value:
+            print("Give me something to search for.")
+            return "handled"
+        handle_search(argparse.Namespace(query=value, limit=None))
+        return "handled"
+    if command == "ask":
+        if not value:
+            print("Ask a question after /ask.")
+            return "handled"
+        handle_ask(argparse.Namespace(query=value, limit=None))
+        return "handled"
+    print(answer_question(raw, settings=settings))
+    return "handled"
+
+
+def resolve_agent_command(raw: str, commands: dict[str, list[str]]) -> tuple[str, str]:
+    text = raw.strip()
+    if not text:
+        return "", ""
+    if text.startswith("/"):
+        parts = text[1:].split(maxsplit=1)
+        command = resolve_command_alias(parts[0], commands) if parts else ""
+        value = parts[1].strip() if len(parts) > 1 else ""
+        return command, value
+    normalized = " ".join(text.casefold().split())
+    command = resolve_command_alias(normalized, commands)
+    if command:
+        return command, ""
+    parts = normalized.split()
+    if len(parts) == 3 and parts[0] == "show" and parts[1] == "report":
+        return "show", parts[2]
+    return "", ""
+
+
+def resolve_command_alias(value: str, commands: dict[str, list[str]]) -> str:
+    normalized = " ".join(str(value or "").casefold().split())
+    normalized_key = normalize_label(normalized)
+    for command, phrases in commands.items():
+        if normalized_key == command or normalized in phrases:
+            return command
+    return normalized_key
+
+
+def load_agent_commands() -> dict[str, list[str]]:
+    path = Path(__file__).with_name("agent_commands.md")
+    entries = read_colon_bullets(path, {"Commands"})
+    commands: dict[str, list[str]] = {}
+    for key, value, _section in entries:
+        phrases = [" ".join(item.casefold().split()) for item in value.split("|") if item.strip()]
+        commands[normalize_label(key)] = phrases
+    return commands
+
+
+def print_process_summary(summary) -> None:
+    if summary.touched == 0:
+        print(f"No supported files found in input: {summary.input_dir}")
+        return
+    print(f"Input: {summary.input_dir}")
+    print(f"Output: {summary.output_dir}")
+    if summary.processed:
+        print(f"Processed {len(summary.processed)} file(s):")
+        for item in summary.processed:
+            print(f"- report {item.get('report_id')}: {Path(item.get('path', '')).name} -> {item.get('output_path')}")
+    if summary.skipped:
+        print(f"Skipped {len(summary.skipped)} file(s):")
+        for item in summary.skipped:
+            print(f"- {Path(item.get('path', '')).name}: {item.get('reason')}")
+    if summary.failed:
+        print(f"Failed {len(summary.failed)} file(s):")
+        for item in summary.failed:
+            print(f"- {Path(item.get('path', '')).name}: {item.get('error')}")
 
 
 if __name__ == "__main__":

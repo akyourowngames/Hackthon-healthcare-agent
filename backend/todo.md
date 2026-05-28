@@ -25,6 +25,19 @@ Good. You have a real sample now. Let me diagnose exactly what's happening befor
 
 ---
 
+## Agent Runtime Addendum
+
+The backend agent must be usable from the terminal without remembering a
+subcommand first.
+
+- Running `python healthcare_agent\cli.py` opens the Vaidy agent shell.
+- Reports and documents live in `input/`.
+- Saying `process input` in the shell processes supported files from `input/`.
+- PDF extraction artifacts and imported document JSON artifacts save under
+  `output/`.
+- Stored report memory lives in SQLite and can be read back with `list reports`,
+  `show report <id>`, search questions, or normal questions.
+
 ## Diagnosis — Two Separate Problems
 
 **Problem 1 — Timeout on Dr Lal PDF**

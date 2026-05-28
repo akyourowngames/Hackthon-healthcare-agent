@@ -113,6 +113,28 @@ def import_existing_output(
     return save_report(payload, source, resolved, settings)
 
 
+def save_document(
+    document_path: str | Path,
+    output_path: str | Path | None = None,
+    settings: AgentSettings | None = None,
+) -> int:
+    resolved = Path(document_path).expanduser().resolve()
+    text = resolved.read_text(encoding="utf-8", errors="replace")
+    payload = {
+        "patient_name": resolved.stem,
+        "report_date": "",
+        "lab_name": "",
+        "report_status": "DOCUMENT",
+        "document_type": resolved.suffix.lower().lstrip(".") or "text",
+        "document_text": text,
+        "biomarkers": {},
+    }
+    target = Path(output_path).expanduser().resolve() if output_path else resolved
+    if output_path:
+        write_json(target, payload)
+    return save_report(payload, resolved, target, settings)
+
+
 def list_reports(settings: AgentSettings | None = None) -> list[dict[str, Any]]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
@@ -141,6 +163,18 @@ def get_report(report_id: int, settings: AgentSettings | None = None) -> dict[st
     result = dict(row)
     result["report"] = json.loads(result.get("report_json") or "{}")
     return result
+
+
+def source_exists(source_path: str | Path, settings: AgentSettings | None = None) -> bool:
+    active_settings = settings or load_agent_settings()
+    initialize_database(active_settings)
+    source = str(Path(source_path).expanduser().resolve())
+    with _connect(active_settings) as connection:
+        row = connection.execute(
+            "SELECT id FROM reports WHERE source_path = ? LIMIT 1",
+            (source,),
+        ).fetchone()
+    return row is not None
 
 
 def search_reports(query: str, limit: int | None = None, settings: AgentSettings | None = None) -> list[SearchHit]:
@@ -232,7 +266,45 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
                 if str(value.get("flag")).upper() not in {"NORMAL", "PENDING"}:
                     parts.append("status abnormal")
             chunks.append("; ".join(parts))
+
+    document_text = str(payload.get("document_text") or "").strip()
+    for index, chunk in enumerate(text_chunks(document_text), start=1):
+        chunks.append(f"document section {index}; {chunk}")
     return chunks or ["empty report"]
+
+
+def text_chunks(text: str, max_chars: int = 900) -> list[str]:
+    clean = str(text or "").strip()
+    if not clean:
+        return []
+    chunks: list[str] = []
+    current: list[str] = []
+    current_size = 0
+    for raw_line in clean.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if len(line) > max_chars:
+            if current:
+                chunks.append(" ".join(current))
+                current = []
+                current_size = 0
+            start = 0
+            while start < len(line):
+                chunks.append(line[start : start + max_chars])
+                start += max_chars
+            continue
+        projected_size = current_size + len(line) + (1 if current else 0)
+        if current and projected_size > max_chars:
+            chunks.append(" ".join(current))
+            current = [line]
+            current_size = len(line)
+        else:
+            current.append(line)
+            current_size = projected_size
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
 
 
 def copy_source_to_storage(source_path: str | Path, settings: AgentSettings | None = None) -> Path:

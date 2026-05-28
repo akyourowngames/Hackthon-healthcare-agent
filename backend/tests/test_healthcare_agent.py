@@ -18,7 +18,9 @@ def temp_settings(root: Path) -> AgentSettings:
     return AgentSettings(
         database_path=root / "health_agent.db",
         reports_dir=root / "reports",
-        default_output_dir=root / "outputs",
+        input_dir=root / "input",
+        default_output_dir=root / "output",
+        supported_extensions=(".pdf", ".json", ".txt", ".md"),
         local_primary=True,
         local_model_repo="Xenova/all-MiniLM-L6-v2",
         local_model_file="onnx/model.onnx",
@@ -119,13 +121,52 @@ class HealthcareAgentTests(unittest.TestCase):
             previous = dict(os.environ)
             os.environ["VAIDY_AGENT_DATABASE_PATH"] = str(root / "agent.db")
             os.environ["VAIDY_AGENT_REPORTS_DIR"] = str(root / "reports")
-            os.environ["VAIDY_AGENT_OUTPUT_DIR"] = str(root / "outputs")
+            os.environ["VAIDY_AGENT_INPUT_DIR"] = str(root / "input")
+            os.environ["VAIDY_AGENT_OUTPUT_DIR"] = str(root / "output")
             os.environ["VAIDY_EMBEDDINGS_LOCAL_PRIMARY"] = "false"
             os.environ["VAIDY_EMBEDDING_DIM"] = "8"
             try:
                 self.assertEqual(cli.main(["import-json", str(json_path)]), 0)
                 self.assertEqual(cli.main(["search", "triglycerides"]), 0)
                 self.assertTrue((root / "agent.db").exists())
+            finally:
+                os.environ.clear()
+                os.environ.update(previous)
+
+    def test_process_input_folder_imports_json_and_text_documents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings = temp_settings(root)
+            settings.input_dir.mkdir()
+            json_path = settings.input_dir / "report.json"
+            note_path = settings.input_dir / "notes.md"
+            json_path.write_text(json.dumps(sample_report()), encoding="utf-8")
+            note_path.write_text("Doctor note\nRetest triglycerides after diet changes.", encoding="utf-8")
+            with patch("healthcare_agent.store.embed_texts", side_effect=fake_embeddings):
+                from healthcare_agent.ingest import process_input_folder
+
+                summary = process_input_folder(settings, local_only=True)
+                reports = store.list_reports(settings)
+                answer = store.answer_question("diet changes", settings=settings)
+        self.assertEqual(len(summary.processed), 2)
+        self.assertEqual(len(reports), 2)
+        self.assertIn("diet changes", answer)
+
+    def test_cli_without_command_opens_agent_shell(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            previous = dict(os.environ)
+            os.environ["VAIDY_AGENT_DATABASE_PATH"] = str(root / "agent.db")
+            os.environ["VAIDY_AGENT_REPORTS_DIR"] = str(root / "reports")
+            os.environ["VAIDY_AGENT_INPUT_DIR"] = str(root / "input")
+            os.environ["VAIDY_AGENT_OUTPUT_DIR"] = str(root / "output")
+            os.environ["VAIDY_EMBEDDINGS_LOCAL_PRIMARY"] = "false"
+            os.environ["VAIDY_EMBEDDING_DIM"] = "8"
+            try:
+                with patch("builtins.input", side_effect=["status", "exit"]):
+                    self.assertEqual(cli.main([]), 0)
+                self.assertTrue((root / "input").exists())
+                self.assertTrue((root / "output").exists())
             finally:
                 os.environ.clear()
                 os.environ.update(previous)
