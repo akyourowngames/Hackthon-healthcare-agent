@@ -70,6 +70,30 @@ python -m healthcare_agent.cli search cholesterol
 python -m healthcare_agent.cli ask "what biomarkers are high or low"
 ```
 
+## API Server
+
+Run the same local agent behind an HTTP API:
+
+```powershell
+python -m healthcare_agent.api
+```
+
+The server defaults to `http://127.0.0.1:8000` and exposes:
+
+- `GET /api/health`
+- `GET /api/status`
+- `POST /api/process-input`
+- `GET /api/reports`
+- `GET /api/reports/{report_id}`
+- `GET /api/search?q=cholesterol`
+- `POST /api/chat`
+- `POST /api/chat/stream`
+
+The streaming chat endpoint sends server-sent events with `meta`, `chunk`,
+`done`, `error`, and `ping` events. Host, port, CORS origins, warmup, and
+keepalive settings live in `healthcare_agent/api_policy.md`, with `.env`
+overrides for local machines.
+
 Embedding order is local first:
 
 1. ONNX-packaged model from `healthcare_agent/agent_policy.md`.

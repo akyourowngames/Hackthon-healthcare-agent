@@ -41,6 +41,17 @@ class AgentSettings:
     chat_evidence_limit: int
     chat_report_context_min_chars: int
     chat_report_context_margin: float
+    memory_enabled: bool
+    memory_session_history_messages: int
+    memory_recall_limit: int
+    memory_context_chars: int
+    memory_auto_store_turns: bool
+    memory_min_text_chars: int
+    memory_importance_default: float
+    memory_rank_semantic_weight: float
+    memory_rank_importance_weight: float
+    memory_rank_overlap_weight: float
+    memory_rank_session_weight: float
 
 
 def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
@@ -81,11 +92,22 @@ def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
         chat_evidence_limit=parse_int(_env_value("VAIDY_CHAT_EVIDENCE_LIMIT", values["chat.evidence_limit"])),
         chat_report_context_min_chars=parse_int(_env_value("VAIDY_CHAT_REPORT_CONTEXT_MIN_CHARS", values["chat.report_context_min_chars"])),
         chat_report_context_margin=parse_float(_env_value("VAIDY_CHAT_REPORT_CONTEXT_MARGIN", values["chat.report_context_margin"])),
+        memory_enabled=_bool_value("VAIDY_MEMORY_ENABLED", values["memory.enabled"]),
+        memory_session_history_messages=parse_int(_env_value("VAIDY_MEMORY_SESSION_HISTORY_MESSAGES", values["memory.session_history_messages"])),
+        memory_recall_limit=parse_int(_env_value("VAIDY_MEMORY_RECALL_LIMIT", values["memory.recall_limit"])),
+        memory_context_chars=parse_int(_env_value("VAIDY_MEMORY_CONTEXT_CHARS", values["memory.context_chars"])),
+        memory_auto_store_turns=_bool_value("VAIDY_MEMORY_AUTO_STORE_TURNS", values["memory.auto_store_turns"]),
+        memory_min_text_chars=parse_int(_env_value("VAIDY_MEMORY_MIN_TEXT_CHARS", values["memory.min_text_chars"])),
+        memory_importance_default=parse_float(_env_value("VAIDY_MEMORY_IMPORTANCE_DEFAULT", values["memory.importance_default"])),
+        memory_rank_semantic_weight=parse_float(_env_value("VAIDY_MEMORY_RANK_SEMANTIC_WEIGHT", values["memory.rank_semantic_weight"])),
+        memory_rank_importance_weight=parse_float(_env_value("VAIDY_MEMORY_RANK_IMPORTANCE_WEIGHT", values["memory.rank_importance_weight"])),
+        memory_rank_overlap_weight=parse_float(_env_value("VAIDY_MEMORY_RANK_OVERLAP_WEIGHT", values["memory.rank_overlap_weight"])),
+        memory_rank_session_weight=parse_float(_env_value("VAIDY_MEMORY_RANK_SESSION_WEIGHT", values["memory.rank_session_weight"])),
     )
 
 
 def _policy_values(path: Path) -> dict[str, str]:
-    entries = read_colon_bullets(path, {"Storage", "Embeddings", "Chat"})
+    entries = read_colon_bullets(path, {"Storage", "Embeddings", "Chat", "Memory"})
     values: dict[str, str] = {}
     for key, value, section in entries:
         values[f"{section}.{key.strip().lower()}"] = value

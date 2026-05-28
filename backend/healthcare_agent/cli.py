@@ -15,6 +15,7 @@ from extractor.utils import normalize_label, read_colon_bullets
 from healthcare_agent.chat import chat_response, warm_chat_model
 from healthcare_agent.config import load_agent_settings
 from healthcare_agent.ingest import ensure_agent_folders, process_input_folder
+from healthcare_agent.memory import ensure_session, initialize_memory, memory_assessment
 from healthcare_agent.store import (
     answer_question,
     copy_source_to_storage,
@@ -89,7 +90,9 @@ def handle_status(_args: argparse.Namespace) -> int:
     settings = load_agent_settings()
     ensure_agent_folders(settings)
     db_path = initialize_database(settings)
+    initialize_memory(settings)
     report_count = len(list_reports(settings))
+    memory = memory_assessment(settings)
     print("Vaidy terminal healthcare agent")
     print(f"database: {db_path}")
     print(f"input_dir: {settings.input_dir}")
@@ -104,6 +107,9 @@ def handle_status(_args: argparse.Namespace) -> int:
     print(f"chat_report_model: {settings.chat_report_model}")
     print(f"chat_streaming: {settings.chat_streaming}")
     print(f"stored_reports: {report_count}")
+    print(f"memory_sessions: {memory['sessions']}")
+    print(f"memory_messages: {memory['messages']}")
+    print(f"memory_entries: {memory['entries']}")
     return 0
 
 
@@ -204,6 +210,8 @@ def run_agent_shell() -> int:
     settings = load_agent_settings()
     ensure_agent_folders(settings)
     initialize_database(settings)
+    initialize_memory(settings)
+    session_id = ensure_session(settings=settings)
     commands = load_agent_commands()
     history: list[dict[str, str]] = []
     start_chat_warmup(settings)
@@ -219,7 +227,7 @@ def run_agent_shell() -> int:
             return 0
         if not raw:
             continue
-        result = handle_agent_message(raw, settings, commands, history)
+        result = handle_agent_message(raw, settings, commands, history, session_id=session_id)
         if result == "exit":
             return 0
 
@@ -229,6 +237,7 @@ def handle_agent_message(
     settings,
     commands: dict[str, list[str]],
     history: list[dict[str, str]] | None = None,
+    session_id: str | None = None,
 ) -> str:
     command, value = resolve_agent_command(raw, commands)
     if command == "exit":
@@ -265,10 +274,10 @@ def handle_agent_message(
         if not value:
             print("Ask a question after /ask.")
             return "handled"
-        result = print_chat_response(value, settings=settings, history=history or [], force_report_context=True)
+        result = print_chat_response(value, settings=settings, history=history or [], force_report_context=True, session_id=session_id)
         remember_turn(history, value, result.text)
         return "handled"
-    result = print_chat_response(raw, settings=settings, history=history or [])
+    result = print_chat_response(raw, settings=settings, history=history or [], session_id=session_id)
     remember_turn(history, raw, result.text)
     return "handled"
 

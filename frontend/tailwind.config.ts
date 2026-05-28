@@ -1,8 +1,8 @@
 const config = {
   content: [
-    "./app/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-    "./sections/**/*.{ts,tsx}",
+    "./app/**/*.{js,jsx,ts,tsx}",
+    "./components/**/*.{js,jsx,ts,tsx}",
+    "./sections/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {
     extend: {

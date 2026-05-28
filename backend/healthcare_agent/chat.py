@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,6 +8,7 @@ import numpy as np
 
 from .config import AgentSettings, load_agent_settings
 from .embedder import embed_texts
+from .memory import ensure_session, memory_context, remember_turn, save_chat_message
 from .store import SearchHit, search_reports
 
 
@@ -17,6 +18,8 @@ class ChatResult:
     used_report_context: bool
     model: str
     evidence: list[SearchHit]
+    memory: list[dict[str, object]] = field(default_factory=list)
+    session_id: str = ""
 
 
 def chat_response(
@@ -25,16 +28,46 @@ def chat_response(
     history: list[dict[str, str]] | None = None,
     force_report_context: bool = False,
     on_chunk=None,
+    session_id: str | None = None,
 ) -> ChatResult:
     active_settings = settings or load_agent_settings()
     evidence: list[SearchHit] = []
+    active_session_id = ""
+    memory_payload: dict[str, object] = {"context": "", "hits": [], "history_messages": []}
+    conversation_history = history or []
+    if active_settings.memory_enabled:
+        active_session_id = ensure_session(session_id, active_settings)
+        memory_payload = memory_context(message, active_session_id, active_settings)
+        saved_history = memory_payload.get("history_messages")
+        if isinstance(saved_history, list) and saved_history:
+            conversation_history = saved_history
     use_context = force_report_context or should_use_report_context(message, active_settings)
     if use_context:
         evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings)
-    messages = build_chat_messages(message, active_settings, history or [], evidence)
+    memory_context_text = str(memory_payload.get("context") or "")
+    messages = build_chat_messages(message, active_settings, conversation_history, evidence, memory_context_text)
     selected_model = select_chat_model(active_settings, use_context)
     text, model = call_chat_model(messages, active_settings, on_chunk=on_chunk, model=selected_model)
-    return ChatResult(text=text, used_report_context=bool(evidence), model=model, evidence=evidence)
+    memory_hits = memory_payload.get("hits")
+    if not isinstance(memory_hits, list):
+        memory_hits = []
+    if model == "unavailable":
+        fallback_text = local_fallback_answer(evidence, memory_hits)
+        if fallback_text:
+            text = fallback_text
+    if active_session_id and model == "unavailable":
+        save_chat_message(active_session_id, "user", message, active_settings)
+        save_chat_message(active_session_id, "assistant", text, active_settings)
+    elif active_session_id:
+        remember_turn(active_session_id, message, text, active_settings)
+    return ChatResult(
+        text=text,
+        used_report_context=bool(evidence),
+        model=model,
+        evidence=evidence,
+        memory=memory_hits,
+        session_id=active_session_id,
+    )
 
 
 def should_use_report_context(message: str, settings: AgentSettings | None = None) -> bool:
@@ -66,9 +99,13 @@ def build_chat_messages(
     settings: AgentSettings,
     history: list[dict[str, str]],
     evidence: list[SearchHit],
+    memory_context_text: str = "",
 ) -> list[dict[str, str]]:
     policy = load_chat_policy()
     system_parts = [policy.get("persona", "You are Vaidy, a helpful health assistant.")]
+    if memory_context_text:
+        system_parts.append("Persistent memory for this user:")
+        system_parts.append(memory_context_text)
     if evidence:
         system_parts.append("Use the local report evidence below when answering this turn.")
         system_parts.append(format_evidence(evidence))
@@ -78,6 +115,27 @@ def build_chat_messages(
     messages.extend(history[-settings.chat_history_messages :])
     messages.append({"role": "user", "content": message})
     return messages
+
+
+def local_fallback_answer(evidence: list[SearchHit], memory_hits: list[dict[str, object]]) -> str:
+    lines: list[str] = []
+    if memory_hits:
+        lines.append("I cannot reach the chat model right now, but I did find saved memory for this turn:")
+        for hit in memory_hits[:4]:
+            text = str(hit.get("text") or "").strip()
+            if text:
+                lines.append(f"- {text}")
+    if evidence:
+        if not lines:
+            lines.append("I cannot reach the chat model right now, but I did find local report evidence:")
+        else:
+            lines.append("Local report evidence also matches:")
+        for hit in evidence[:4]:
+            lines.append(f"- report {hit.report_id}: {hit.text}")
+        lines.append("This is report evidence, not a diagnosis.")
+    if lines:
+        return "\n".join(lines)
+    return ""
 
 
 def select_chat_model(settings: AgentSettings, use_report_context: bool) -> str:

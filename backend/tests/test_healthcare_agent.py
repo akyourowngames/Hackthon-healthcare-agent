@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from healthcare_agent import cli, embedder, store
+from healthcare_agent import chat, cli, embedder, memory, store
 from healthcare_agent.config import AgentSettings
 from healthcare_agent.embedder import EmbeddingResult
 
@@ -48,6 +48,17 @@ def temp_settings(root: Path) -> AgentSettings:
         chat_evidence_limit=3,
         chat_report_context_min_chars=4,
         chat_report_context_margin=0.05,
+        memory_enabled=True,
+        memory_session_history_messages=6,
+        memory_recall_limit=4,
+        memory_context_chars=900,
+        memory_auto_store_turns=True,
+        memory_min_text_chars=3,
+        memory_importance_default=0.7,
+        memory_rank_semantic_weight=0.62,
+        memory_rank_importance_weight=0.12,
+        memory_rank_overlap_weight=0.18,
+        memory_rank_session_weight=0.08,
     )
 
 
@@ -235,6 +246,80 @@ class HealthcareAgentTests(unittest.TestCase):
 
             warm_chat_model(warm_settings)
         self.assertEqual(call.call_args.kwargs["model"], settings.chat_fast_model)
+
+    def test_memory_persists_session_messages_and_recall(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = temp_settings(Path(temp_dir))
+            with patch("healthcare_agent.memory.embed_texts", side_effect=fake_embeddings):
+                session_id = memory.ensure_session(settings=settings)
+                saved = memory.remember_turn(
+                    session_id,
+                    "Remember I prefer concise report summaries.",
+                    "I will keep report summaries concise.",
+                    settings,
+                )
+                messages = memory.recent_session_messages(session_id, settings=settings)
+                hits = memory.recall_memories("concise summaries", session_id=session_id, settings=settings)
+                assessment = memory.memory_assessment(settings)
+        self.assertEqual(saved["session_id"], session_id)
+        self.assertEqual(len(messages), 2)
+        self.assertIn("concise", hits[0].text.casefold())
+        self.assertEqual(assessment["sessions"], 1)
+        self.assertEqual(assessment["messages"], 2)
+        self.assertEqual(assessment["entries"], 1)
+
+    def test_chat_response_injects_memory_and_saves_turn(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = temp_settings(Path(temp_dir))
+            captured: dict[str, str] = {}
+
+            def fake_call(messages, _settings, on_chunk=None, model=None):
+                captured["system"] = messages[0]["content"]
+                if on_chunk:
+                    on_chunk("You prefer concise.")
+                return "You prefer concise.", "test-model"
+
+            with patch("healthcare_agent.memory.embed_texts", side_effect=fake_embeddings):
+                session_id = memory.ensure_session(settings=settings)
+                memory.remember_text(
+                    "User prefers concise report summaries.",
+                    session_id=session_id,
+                    settings=settings,
+                )
+                with patch("healthcare_agent.chat.should_use_report_context", return_value=False):
+                    with patch("healthcare_agent.chat.call_chat_model", side_effect=fake_call):
+                        result = chat.chat_response(
+                            "What summary style do I prefer?",
+                            settings=settings,
+                            session_id=session_id,
+                        )
+                messages = memory.recent_session_messages(session_id, settings=settings)
+        self.assertEqual(result.session_id, session_id)
+        self.assertIn("Persistent memory", captured["system"])
+        self.assertIn("concise", captured["system"].casefold())
+        self.assertEqual(messages[-1]["role"], "assistant")
+        self.assertIn("concise", messages[-1]["content"])
+
+    def test_chat_response_uses_memory_when_model_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = temp_settings(Path(temp_dir))
+            with patch("healthcare_agent.memory.embed_texts", side_effect=fake_embeddings):
+                session_id = memory.ensure_session(settings=settings)
+                memory.remember_text(
+                    "User wants Vaidy to preserve session context across messages.",
+                    session_id=session_id,
+                    settings=settings,
+                )
+                with patch("healthcare_agent.chat.should_use_report_context", return_value=False):
+                    with patch("healthcare_agent.chat.call_chat_model", return_value=("NVIDIA chat failed", "unavailable")):
+                        result = chat.chat_response(
+                            "What should you preserve?",
+                            settings=settings,
+                            session_id=session_id,
+                        )
+        self.assertIn("saved memory", result.text)
+        self.assertIn("preserve session context", result.text)
+        self.assertEqual(result.model, "unavailable")
 
 
 if __name__ == "__main__":

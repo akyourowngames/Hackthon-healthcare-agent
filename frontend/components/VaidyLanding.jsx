@@ -12,6 +12,7 @@ const WAITLIST_STORAGE_KEY = "vaidy_waitlist_submissions";
 const WAITLIST_SUCCESS_MESSAGE = "You're on the list 🎉 We'll notify you when Vaidy launches.";
 
 const NAV_LINKS = [
+  { label: "Assistant", href: "/chat" },
   { label: "Features", href: "#features" },
   { label: "How it works", href: "#how-it-works" },
   { label: "Demo", href: "#demo" },
@@ -576,11 +577,11 @@ function Hero({ onOpenWaitlist }) {
             marginLeft: "auto",
             marginRight: "auto",
           }}>
-          <motion.button type="button" onClick={onOpenWaitlist} whileHover={{ scale: 1.04, boxShadow: `0 0 48px rgba(0,217,126,0.5)` }} whileTap={{ scale: 0.97 }}
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 28px", background: EMERALD, color: "#03120a", border: "none", borderRadius: 32, fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 32px rgba(0,217,126,0.35)`, transition: "box-shadow 0.2s", cursor: "pointer", width: mobile ? "100%" : "auto" }}>
-            Upload a Report
+          <motion.a href="/chat" whileHover={{ scale: 1.04, boxShadow: `0 0 48px rgba(0,217,126,0.5)` }} whileTap={{ scale: 0.97 }}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 28px", background: EMERALD, color: "#03120a", border: "none", borderRadius: 32, fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 32px rgba(0,217,126,0.35)`, transition: "box-shadow 0.2s", cursor: "pointer", width: mobile ? "100%" : "auto", textDecoration: "none" }}>
+            Open Assistant
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#03120a" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </motion.button>
+          </motion.a>
           <motion.a href="#demo" onClick={(event) => handleSmoothAnchorClick(event, "#demo")} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
             style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 28px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 32, fontSize: 15, fontWeight: 600, textDecoration: "none", fontFamily: "'DM Sans', sans-serif", width: mobile ? "100%" : "auto" }}>
             Watch demo

@@ -279,3 +279,12 @@ body::before {
 .vaidy-timeline-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 217, 126, 0.7);
 }
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

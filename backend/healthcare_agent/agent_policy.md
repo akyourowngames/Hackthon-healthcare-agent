@@ -41,3 +41,17 @@ code.
 - evidence_limit: 5
 - report_context_min_chars: 4
 - report_context_margin: 0.05
+
+## Memory
+
+- enabled: true
+- session_history_messages: 12
+- recall_limit: 6
+- context_chars: 2200
+- auto_store_turns: true
+- min_text_chars: 3
+- importance_default: 0.7
+- rank_semantic_weight: 0.62
+- rank_importance_weight: 0.12
+- rank_overlap_weight: 0.18
+- rank_session_weight: 0.08
