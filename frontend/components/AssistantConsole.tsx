@@ -20,6 +20,11 @@ type ChatRecord = {
   model?: string;
 };
 
+type StreamPiece = {
+  kind: "text" | "space" | "pause";
+  text: string;
+};
+
 const promptChips = [
   "Process input and summarize what changed",
   "What reports are in memory?",
@@ -50,7 +55,10 @@ export default function AssistantConsole() {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const activeAssistantIdRef = useRef("");
   const streamBufferRef = useRef("");
-  const flushFrameRef = useRef<number | null>(null);
+  const streamQueueRef = useRef<StreamPiece[]>([]);
+  const streamTimerRef = useRef<number | null>(null);
+  const receivedStreamRef = useRef("");
+  const donePayloadRef = useRef<ChatDonePayload | null>(null);
 
   const history = useMemo<VaidyMessage[]>(() => {
     return messages
@@ -102,26 +110,83 @@ export default function AssistantConsole() {
     inputElement.style.height = `${Math.min(inputElement.scrollHeight, 180)}px`;
   }, [input]);
 
-  const flushStream = useCallback(() => {
-    if (flushFrameRef.current !== null) {
-      window.cancelAnimationFrame(flushFrameRef.current);
-      flushFrameRef.current = null;
-    }
+  const updateActiveAssistant = useCallback((content: string) => {
     const assistantId = activeAssistantIdRef.current;
-    const text = streamBufferRef.current;
     if (!assistantId) return;
     setMessages((current) =>
-      current.map((message) => (message.id === assistantId ? { ...message, content: text } : message)),
+      current.map((message) => (message.id === assistantId ? { ...message, content } : message)),
     );
   }, []);
 
-  const scheduleFlush = useCallback(() => {
-    if (flushFrameRef.current !== null) return;
-    flushFrameRef.current = window.requestAnimationFrame(() => {
-      flushFrameRef.current = null;
-      flushStream();
-    });
-  }, [flushStream]);
+  const completeStreamIfReady = useCallback(() => {
+    if (streamQueueRef.current.length || streamTimerRef.current !== null) return;
+    const payload = donePayloadRef.current;
+    const assistantId = activeAssistantIdRef.current;
+    if (!payload || !assistantId) return;
+
+    const finalText = streamBufferRef.current || payload.text || "";
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === assistantId
+          ? {
+              ...message,
+              content: finalText,
+              pending: false,
+              model: payload.model,
+            }
+          : message,
+      ),
+    );
+    donePayloadRef.current = null;
+    activeAssistantIdRef.current = "";
+    receivedStreamRef.current = "";
+    streamBufferRef.current = "";
+    setStreamLabel("ready");
+    setIsStreaming(false);
+    refreshStatus();
+    inputRef.current?.focus();
+  }, [refreshStatus]);
+
+  const drainStreamQueue = useCallback(() => {
+    streamTimerRef.current = null;
+    const piece = streamQueueRef.current.shift();
+    if (!piece) {
+      completeStreamIfReady();
+      return;
+    }
+
+    streamBufferRef.current += piece.text;
+    updateActiveAssistant(streamBufferRef.current);
+    setStreamLabel("streaming");
+
+    streamTimerRef.current = window.setTimeout(
+      drainStreamQueue,
+      streamPieceDelay(piece, streamQueueRef.current.length),
+    );
+  }, [completeStreamIfReady, updateActiveAssistant]);
+
+  const enqueueStreamText = useCallback(
+    (text: string) => {
+      if (!text) return;
+      streamQueueRef.current.push(...splitStreamPieces(text));
+      if (streamTimerRef.current === null) {
+        drainStreamQueue();
+      }
+    },
+    [drainStreamQueue],
+  );
+
+  const stopStreamTimer = useCallback(() => {
+    if (streamTimerRef.current === null) return;
+    window.clearTimeout(streamTimerRef.current);
+    streamTimerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopStreamTimer();
+    };
+  }, [stopStreamTimer]);
 
   const appendSystem = useCallback((content: string) => {
     setMessages((current) => [...current, { id: makeId("system"), role: "system", content }]);
@@ -162,60 +227,90 @@ export default function AssistantConsole() {
 
       activeAssistantIdRef.current = assistantId;
       streamBufferRef.current = "";
+      receivedStreamRef.current = "";
+      donePayloadRef.current = null;
+      streamQueueRef.current = [];
+      stopStreamTimer();
       setInput("");
       setIsStreaming(true);
       setStreamLabel("connecting");
       setMessages((current) => [...current, userMessage, assistantMessage]);
 
-      await streamVaidyChat(trimmed, history, false, sessionId, {
-        onMeta: (payload) => {
-          syncSessionId(payload.session_id);
-          setStreamLabel("thinking");
-        },
-        onChunk: (chunk) => {
-          streamBufferRef.current += chunk;
-          setStreamLabel("streaming");
-          scheduleFlush();
-        },
-        onDone: (payload: ChatDonePayload) => {
-          syncSessionId(payload.session_id);
-          if (!streamBufferRef.current) {
-            streamBufferRef.current = payload.text || "";
-          }
-          flushStream();
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId
-                ? {
-                    ...message,
-                    content: streamBufferRef.current || payload.text,
-                    pending: false,
-                    model: payload.model,
-                  }
-                : message,
-            ),
-          );
-          setStreamLabel("ready");
-        },
-        onError: (message) => {
-          streamBufferRef.current = message;
-          flushStream();
-          setMessages((current) =>
-            current.map((item) =>
-              item.id === assistantId ? { ...item, content: message, pending: false, model: "unavailable" } : item,
-            ),
-          );
-          setStreamLabel("error");
-        },
-      });
-
-      activeAssistantIdRef.current = "";
-      streamBufferRef.current = "";
-      setIsStreaming(false);
-      refreshStatus();
-      inputRef.current?.focus();
+      try {
+        await streamVaidyChat(trimmed, history, false, sessionId, {
+          onMeta: (payload) => {
+            syncSessionId(payload.session_id);
+            setStreamLabel("thinking");
+          },
+          onChunk: (chunk) => {
+            receivedStreamRef.current += chunk;
+            enqueueStreamText(chunk);
+          },
+          onDone: (payload: ChatDonePayload) => {
+            syncSessionId(payload.session_id);
+            donePayloadRef.current = payload;
+            const finalText = payload.text || "";
+            if (!receivedStreamRef.current && finalText) {
+              enqueueStreamText(finalText);
+            } else if (
+              finalText.length > receivedStreamRef.current.length &&
+              finalText.startsWith(receivedStreamRef.current)
+            ) {
+              enqueueStreamText(finalText.slice(receivedStreamRef.current.length));
+            }
+            completeStreamIfReady();
+          },
+          onError: (message) => {
+            stopStreamTimer();
+            streamQueueRef.current = [];
+            donePayloadRef.current = null;
+            streamBufferRef.current = message;
+            updateActiveAssistant(message);
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === assistantId ? { ...item, content: message, pending: false, model: "unavailable" } : item,
+              ),
+            );
+            activeAssistantIdRef.current = "";
+            receivedStreamRef.current = "";
+            streamBufferRef.current = "";
+            setIsStreaming(false);
+            setStreamLabel("error");
+            refreshStatus();
+            inputRef.current?.focus();
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not reach the API.";
+        stopStreamTimer();
+        streamQueueRef.current = [];
+        donePayloadRef.current = null;
+        updateActiveAssistant(message);
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === assistantId ? { ...item, content: message, pending: false, model: "unavailable" } : item,
+          ),
+        );
+        activeAssistantIdRef.current = "";
+        receivedStreamRef.current = "";
+        streamBufferRef.current = "";
+        setIsStreaming(false);
+        setStreamLabel("error");
+        refreshStatus();
+        inputRef.current?.focus();
+      }
     },
-    [flushStream, history, isStreaming, refreshStatus, scheduleFlush, sessionId, syncSessionId],
+    [
+      completeStreamIfReady,
+      enqueueStreamText,
+      history,
+      isStreaming,
+      refreshStatus,
+      sessionId,
+      stopStreamTimer,
+      syncSessionId,
+      updateActiveAssistant,
+    ],
   );
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -405,11 +500,7 @@ function AnimatedAssistantText({ active, text }: { active: boolean; text: string
         segment.kind === "space" ? (
           <span key={`${index}-space`}>{segment.text}</span>
         ) : (
-          <span
-            key={`${index}-${segment.text}`}
-            className="stream-token"
-            style={{ animationDelay: `${Math.min(index * 12, 180)}ms` }}
-          >
+          <span key={`${index}-${segment.text}`} className="stream-token">
             {segment.text}
           </span>
         ),
@@ -422,20 +513,69 @@ function AnimatedAssistantText({ active, text }: { active: boolean; text: string
 function splitTextSegments(text: string) {
   const segments: Array<{ kind: "text" | "space"; text: string }> = [];
   let current = "";
-  let currentKind: "text" | "space" | "" = "";
+  let currentKind: "text" | "space" | "pause" | "" = "";
   for (const character of text) {
-    const nextKind = character === " " || character === "\n" || character === "\t" ? "space" : "text";
+    let nextKind: "text" | "space" | "pause" = "text";
+    if (isSpaceCharacter(character)) {
+      nextKind = "space";
+    } else if (isPauseCharacter(character)) {
+      nextKind = "pause";
+    }
+
     if (currentKind && nextKind !== currentKind) {
-      segments.push({ kind: currentKind, text: current });
+      segments.push({ kind: currentKind === "space" ? "space" : "text", text: current });
       current = "";
     }
     current += character;
     currentKind = nextKind;
   }
   if (currentKind) {
-    segments.push({ kind: currentKind, text: current });
+    segments.push({ kind: currentKind === "space" ? "space" : "text", text: current });
   }
   return segments;
+}
+
+function splitStreamPieces(text: string) {
+  const pieces: StreamPiece[] = [];
+  let current = "";
+  let currentKind: StreamPiece["kind"] | "" = "";
+
+  for (const character of text) {
+    let nextKind: StreamPiece["kind"] = "text";
+    if (isSpaceCharacter(character)) {
+      nextKind = "space";
+    } else if (isPauseCharacter(character)) {
+      nextKind = "pause";
+    }
+
+    if (currentKind && nextKind !== currentKind) {
+      pieces.push({ kind: currentKind, text: current });
+      current = "";
+    }
+    current += character;
+    currentKind = nextKind;
+  }
+
+  if (currentKind) {
+    pieces.push({ kind: currentKind, text: current });
+  }
+
+  return pieces;
+}
+
+function streamPieceDelay(piece: StreamPiece, remaining: number) {
+  if (piece.kind === "space") return remaining > 60 ? 16 : 28;
+  if (piece.kind === "pause") return remaining > 60 ? 70 : 128;
+  if (piece.text.length <= 2) return remaining > 60 ? 46 : 72;
+  return remaining > 60 ? 58 : 94;
+}
+
+function isSpaceCharacter(character: string) {
+  return character === " " || character === "\n" || character === "\t";
+}
+
+function isPauseCharacter(character: string) {
+  return character === "." || character === "," || character === "?" || character === "!" || character === ";" || character === ":";
 }
 
 function Chip({ label, value }: { label: string; value: string }) {

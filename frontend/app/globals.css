@@ -63,12 +63,13 @@
 @keyframes stream-token-in {
   0% {
     opacity: 0;
-    filter: blur(6px);
-    transform: translateY(7px) scale(0.985);
+    filter: blur(7px);
+    transform: translateY(8px) scale(0.98);
   }
-  58% {
+  64% {
     opacity: 1;
-    filter: blur(0);
+    filter: blur(0.8px);
+    transform: translateY(0) scale(1);
   }
   100% {
     opacity: 1;
@@ -319,7 +320,7 @@ body::before {
 
 .stream-token {
   display: inline-block;
-  animation: stream-token-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: stream-token-in 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: 50% 70%;
   will-change: opacity, filter, transform;
 }
