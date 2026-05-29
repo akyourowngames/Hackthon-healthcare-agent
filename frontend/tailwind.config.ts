@@ -29,6 +29,7 @@ const config = {
       },
       fontFamily: {
         sans: ["var(--font-dm-sans)", "DM Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        heading: ["var(--font-sora)", "Sora", "ui-sans-serif", "system-ui", "sans-serif"],
         serif: ["var(--font-dm-sans)", "DM Sans", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       fontSize: {

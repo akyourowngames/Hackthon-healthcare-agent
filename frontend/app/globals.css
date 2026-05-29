@@ -5,19 +5,19 @@
 /* ─── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
   --font-dm-sans: "DM Sans", "SF Pro Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  --background: #04050a;
+  --background: #0a0a0a;
   --foreground: #ffffff;
-  --surface: #060810;
-  --surface-2: #0a0d16;
+  --surface: #111111;
+  --surface-2: #161616;
   --glass: rgba(255, 255, 255, 0.025);
   --border-soft: rgba(255, 255, 255, 0.07);
   --border-highlight: rgba(255, 255, 255, 0.10);
-  --accent: #00d97e;
-  --accent-secondary: #00c4b8;
+  --accent: #1D9E75;
+  --accent-secondary: #0F6E56;
   --accent-tertiary: #a78bfa;
   --accent-soft: rgba(0, 217, 126, 0.12);
-  --emerald: #00d97e;
-  --teal: #00c4b8;
+  --emerald: #1D9E75;
+  --teal: #0F6E56;
   --purple: #a78bfa;
   --amber: #fbbf24;
   --red: #f87171;
@@ -97,6 +97,291 @@ body {
   color: var(--foreground);
   font-family: var(--font-dm-sans), "DM Sans", "SF Pro Display", "Segoe UI", sans-serif;
   letter-spacing: 0;
+}
+
+.font-heading {
+  font-family: var(--font-sora), "Sora", ui-sans-serif, system-ui, sans-serif;
+}
+
+.auth-bg,
+.app-bg {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    #0a0a0a;
+  background-size: 48px 48px;
+}
+
+.auth-bg::before,
+.app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.036;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+.auth-bg::after,
+.app-bg::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(29, 158, 117, 0.12), transparent 32%),
+    radial-gradient(circle at 100% 100%, rgba(29, 158, 117, 0.05), transparent 24%);
+}
+
+.auth-card,
+.dashboard-card,
+.report-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(22, 22, 22, 0.96), rgba(17, 17, 17, 0.96));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.auth-card {
+  padding: 28px;
+}
+
+.dashboard-card {
+  padding: 20px;
+}
+
+.auth-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #0d0d0d;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.auth-input-wrap:focus-within {
+  border-color: rgba(29, 158, 117, 0.75);
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.16);
+}
+
+.auth-input-wrap.is-error {
+  border-color: rgba(255, 107, 107, 0.72);
+}
+
+.auth-input-wrap.is-valid {
+  border-color: rgba(29, 158, 117, 0.56);
+}
+
+.auth-input {
+  min-width: 0;
+  flex: 1;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  padding: 0 12px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+
+.auth-input::placeholder,
+.auth-input-wrap::placeholder,
+.auth-select::placeholder {
+  color: #666;
+}
+
+.auth-select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #0d0d0d;
+  color: #ccc;
+  padding: 0 12px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-select:focus {
+  border-color: rgba(29, 158, 117, 0.75);
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.16);
+}
+
+.auth-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 8px;
+  background: #1D9E75;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 16px 34px rgba(29, 158, 117, 0.2);
+}
+
+.auth-primary-btn:hover {
+  background: #0F6E56;
+  transform: translateY(-1px);
+}
+
+.auth-primary-btn:focus-visible {
+  outline: 2px solid rgba(29, 158, 117, 0.8);
+  outline-offset: 3px;
+}
+
+.auth-google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.auth-google-btn:hover {
+  border-color: rgba(29, 158, 117, 0.48);
+  background: #161616;
+  transform: translateY(-1px);
+}
+
+.dashboard-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  display: none;
+  width: 240px;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 10, 10, 0.94);
+  padding: 24px 16px;
+  backdrop-filter: blur(18px);
+}
+
+.dashboard-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #888;
+  font-size: 14px;
+  font-weight: 700;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.dashboard-nav-item:hover,
+.dashboard-nav-item.is-active {
+  border-left-color: #1D9E75;
+  background: rgba(255, 255, 255, 0.045);
+  color: #1D9E75;
+}
+
+.dashboard-logout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: auto;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #888;
+  font-size: 14px;
+  font-weight: 700;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.dashboard-logout:hover {
+  background: rgba(255, 107, 107, 0.08);
+  color: #ff6b6b;
+}
+
+.report-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: #111;
+  padding: 12px;
+}
+
+.insight-card {
+  border-left: 3px solid #1D9E75;
+  border-radius: 10px;
+  background: #111;
+  padding: 14px;
+}
+
+.insight-card.amber {
+  border-left-color: #f6b84b;
+}
+
+.insight-card.green {
+  border-left-color: #1D9E75;
+}
+
+.insight-card.teal {
+  border-left-color: #2dd4bf;
+}
+
+.report-card {
+  padding: 18px;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.report-card:hover {
+  border-color: rgba(29, 158, 117, 0.58);
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+}
+
+@keyframes mailFloat {
+  0%, 100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.22);
+  }
+  50% {
+    transform: translateY(-6px);
+    box-shadow: 0 0 0 12px rgba(29, 158, 117, 0);
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard-sidebar {
+    display: flex;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 22px;
+  }
+
+  .report-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 /* Grain texture — subtle, just barely visible */

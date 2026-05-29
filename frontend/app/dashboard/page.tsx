@@ -1,867 +1,314 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useAuth } from "@/lib/auth-context";
-import { isSupabaseConfigured } from "@/lib/supabase";
 import {
-  fetchUserReports,
-  fetchUserBiomarkers,
-  fetchUserAnomalies,
-  listUserFiles,
-  deleteReport,
-  SupabaseReport,
-  SupabaseBiomarker,
-  SupabaseAnomaly,
-} from "@/lib/supabase-data";
+  Activity,
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  CircleDot,
+  Droplets,
+  FileText,
+  HeartPulse,
+  TrendingDown,
+} from "lucide-react";
 import {
-  AnomalyFinding,
-  BiomarkerHistoryRow,
-  DashboardPayload,
-  ShareLinkPayload,
-  createShareLink,
-  getVaidyStatus,
-  streamUploadProgress,
-  uploadReportWithProgress,
-  UploadStatusPayload,
-} from "@/lib/vaidy-api";
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
-type Tab = "overview" | "reports" | "biomarkers" | "settings";
-type DashboardSource = "supabase" | "api" | "syncing";
+const summaryCards = [
+  {
+    label: "Last report",
+    value: "Oct 15, 2024",
+    icon: CalendarDays,
+    tone: "border-sky-300/20 bg-sky-300/10 text-sky-200",
+  },
+  {
+    label: "Biomarkers tracked",
+    value: "12",
+    icon: Activity,
+    tone: "border-teal-300/20 bg-teal-300/10 text-teal-200",
+  },
+  {
+    label: "Flagged values",
+    value: "2",
+    icon: AlertTriangle,
+    tone: "border-red-300/20 bg-red-300/10 text-red-200",
+  },
+  {
+    label: "Overall status",
+    value: "Needs attention",
+    icon: HeartPulse,
+    tone: "border-amber-300/20 bg-amber-300/10 text-amber-200",
+    badge: true,
+  },
+];
 
-function isAbnormalFlag(flag: string) {
-  const normalized = String(flag || "").trim().toUpperCase();
-  return Boolean(normalized && normalized !== "NORMAL" && normalized !== "N" && normalized !== "PENDING");
-}
+const hemoglobinTrend = [
+  { month: "Apr", hemoglobin: 13.1 },
+  { month: "Jun", hemoglobin: 12.4 },
+  { month: "Jul", hemoglobin: 11.9 },
+  { month: "Aug", hemoglobin: 12.1 },
+  { month: "Sep", hemoglobin: 11.6 },
+  { month: "Oct", hemoglobin: 11.2 },
+];
 
-function rowFromSupabaseBiomarker(b: {
-  id: number;
-  user_id: string;
-  local_report_id: number;
-  biomarker_name: string;
-  value: number | null;
-  unit: string;
-  flag: string;
-  ref_range: string;
-  report_date: string;
-  lab_name: string;
-  created_at: string;
-}): BiomarkerHistoryRow {
-  return {
-    id: b.id,
-    user_id: b.user_id,
-    report_id: b.local_report_id,
-    biomarker_name: b.biomarker_name,
-    value: b.value,
-    unit: b.unit,
-    flag: b.flag,
-    ref_range: b.ref_range,
-    report_date: b.report_date,
-    lab_name: b.lab_name,
-    created_at: b.created_at,
-  };
-}
+const biomarkers = [
+  {
+    biomarker: "Hemoglobin",
+    value: "11.2 g/dL",
+    range: "13.5-17.5",
+    status: "🔴 Low",
+    style: "border-red-300/20 bg-red-300/10 text-red-200",
+  },
+  {
+    biomarker: "Platelets",
+    value: "420,000 /μL",
+    range: "150K-400K",
+    status: "🟡 Mildly high",
+    style: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+  },
+  {
+    biomarker: "WBC",
+    value: "7,200 /μL",
+    range: "4,500-11,000",
+    status: "🟢 Normal",
+    style: "border-emerald-300/20 bg-emerald-300/10 text-emerald-200",
+  },
+  {
+    biomarker: "RBC",
+    value: "4.1 M/μL",
+    range: "4.5-5.9",
+    status: "🔴 Low",
+    style: "border-red-300/20 bg-red-300/10 text-red-200",
+  },
+  {
+    biomarker: "MCV",
+    value: "78 fL",
+    range: "80-100",
+    status: "🟡 Borderline low",
+    style: "border-amber-300/20 bg-amber-300/10 text-amber-100",
+  },
+];
 
-function buildSupabaseDashboard(
-  userId: string,
-  reports: SupabaseReport[],
-  biomarkers: SupabaseBiomarker[],
-  anomalies: SupabaseAnomaly[],
-): DashboardPayload {
-  const history = biomarkers.map(rowFromSupabaseBiomarker);
-  history.sort((a, b) => {
-    const reportDelta = Number(a.report_id || 0) - Number(b.report_id || 0);
-    if (reportDelta) return reportDelta;
-    return Number(a.id || 0) - Number(b.id || 0);
-  });
-  const grouped = new Map<string, { latest: BiomarkerHistoryRow; history: BiomarkerHistoryRow[]; points: number }>();
-  for (const row of history) {
-    const name = row.biomarker_name || "Unknown";
-    const existing = grouped.get(name);
-    if (existing) {
-      existing.history.push(row);
-      existing.latest = row;
-      existing.points = existing.history.length;
-    } else {
-      grouped.set(name, { latest: row, history: [row], points: 1 });
-    }
-  }
-  const biomarkerList = Array.from(grouped.entries()).map(([name, data]) => ({ name, ...data }));
-  const abnormalLatest = biomarkerList.filter((item) => isAbnormalFlag(item.latest.flag)).length;
-  const anomalyList: AnomalyFinding[] = anomalies.map((a) => ({
-    id: a.id,
-    user_id: a.user_id,
-    biomarker: a.biomarker,
-    finding_type: a.finding_type,
-    severity: a.severity as "watch" | "concern" | "urgent",
-    description: a.description,
-    data_points: a.data_points as Array<Record<string, unknown>>,
-    metrics: a.metrics,
-    detected_at: a.detected_at,
-  }));
-  const score = Math.max(0, 100 - (abnormalLatest * 5) - (anomalyList.length * 3));
-  return {
-    user_id: userId,
-    health_score: {
-      score,
-      latest_biomarkers: biomarkerList.length,
-      abnormal_latest: abnormalLatest,
-      finding_count: anomalyList.length,
-    },
-    anomalies: anomalyList,
-    biomarkers: biomarkerList,
-    history,
-    reports: reports.map((r) => ({
-      id: r.id,
-      local_report_id: r.local_report_id,
-      user_id: r.user_id,
-      patient_name: r.patient_name,
-      report_date: r.report_date,
-      lab_name: r.lab_name,
-      report_status: r.report_status,
-      biomarker_count: r.biomarker_count,
-      source_path: r.source_path,
-      created_at: r.created_at,
-      analyzed: r.biomarker_count > 0,
-    })),
-  };
-}
-
-function sourceLabel(source: DashboardSource) {
-  if (source === "supabase") return "Supabase live";
-  if (source === "syncing") return "Analysis sync";
-  return "API mirror";
-}
+const timeline = [
+  {
+    date: "Oct 15 2024",
+    text: "CBC report uploaded - 2 flags found",
+    icon: AlertTriangle,
+    style: "bg-amber-300 text-amber-950",
+  },
+  {
+    date: "Jul 3 2024",
+    text: "CBC report uploaded - 1 flag found",
+    icon: CircleDot,
+    style: "bg-sky-300 text-sky-950",
+  },
+  {
+    date: "Apr 10 2024",
+    text: "CBC report uploaded - no flags",
+    icon: CheckCircle2,
+    style: "bg-emerald-300 text-emerald-950",
+  },
+];
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { user, session, isAuthenticated, loading, userId, signOut } = useAuth();
-  const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
-  const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [refreshing, setRefreshing] = useState(false);
-  const [source, setSource] = useState<DashboardSource>("api");
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push("/auth");
-    }
-  }, [loading, isAuthenticated, router]);
-
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      if (!isSupabaseConfigured) {
-        setError("Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-        setSource("supabase");
-        return;
-      }
-      if (userId === "local-user") {
-        setError("Sign in to load your cloud health data.");
-        setSource("supabase");
-        return;
-      }
-      // Cloud-first: all reports, biomarkers, and findings come from Supabase.
-      const [reports, biomarkers, anomalies] = await Promise.all([
-        fetchUserReports(userId),
-        fetchUserBiomarkers(userId),
-        fetchUserAnomalies(userId),
-      ]);
-      const payload = buildSupabaseDashboard(userId, reports, biomarkers, anomalies);
-      setDashboard(payload);
-      setSource("supabase");
-      setError("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load cloud dashboard data.");
-      setSource("supabase");
-    } finally {
-      setRefreshing(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    if (isAuthenticated && userId) refresh();
-  }, [isAuthenticated, userId, refresh]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/auth");
-  };
-
-  if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#050608] text-white">
-        <div className="flex items-center gap-3">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-[#00d97e]" />
-          <span className="text-sm text-white/50">Loading...</span>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-[#050608] text-white">
-      {/* Top nav */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#050608]/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5 text-white no-underline">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#00d97e] text-[#03120a]">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-6 4 12 2-6h6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </span>
-            <span className="text-sm font-extrabold tracking-tight">vaidy</span>
-          </Link>
+    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#101217]/95 shadow-2xl shadow-black/30">
+          <div className="border-b border-white/[0.08] bg-white/[0.025] px-5 py-6 sm:px-7 lg:px-8">
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-teal-300/20 bg-teal-300/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-teal-200">
+                  <Droplets className="h-3.5 w-3.5" />
+                  Rohan's blood health
+                </div>
+                <h1 className="mt-4 font-heading text-3xl font-bold text-white sm:text-4xl">
+                  Health dashboard
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                  CBC trends, flagged biomarkers, and report history from the latest uploaded results.
+                </p>
+              </div>
 
-          <nav className="hidden items-center gap-1 sm:flex">
-            {(["overview", "reports", "biomarkers", "settings"] as Tab[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`rounded-lg px-3.5 py-2 text-sm font-medium capitalize transition ${
-                  activeTab === tab
-                    ? "bg-white/[0.08] text-white"
-                    : "text-white/45 hover:text-white/70"
-                }`}
+              <div className="flex w-full items-center gap-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-amber-100 sm:w-auto">
+                <TrendingDown className="h-5 w-5 shrink-0" />
+                <div>
+                  <p className="text-sm font-bold">Hemoglobin is trending down</p>
+                  <p className="text-xs text-amber-100/70">Latest value sits below the normal range</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-7 lg:grid-cols-4 lg:p-8">
+            {summaryCards.map(({ label, value, icon: Icon, tone, badge }) => (
+              <article
+                key={label}
+                className="rounded-xl border border-white/[0.08] bg-white/[0.035] p-5 shadow-lg shadow-black/10"
               >
-                {tab}
-              </button>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-400">{label}</p>
+                    {badge ? (
+                      <span className="mt-3 inline-flex rounded-full border border-amber-300/30 bg-amber-300/15 px-3 py-1 text-sm font-bold text-amber-200">
+                        {value}
+                      </span>
+                    ) : (
+                      <p className="mt-3 text-2xl font-bold text-white">{value}</p>
+                    )}
+                  </div>
+                  <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border ${tone}`}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                </div>
+              </article>
             ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/chat"
-              className="hidden rounded-lg border border-[#00d97e]/30 bg-[#00d97e]/[0.08] px-3.5 py-2 text-xs font-bold text-[#00d97e] transition hover:bg-[#00d97e]/[0.15] sm:inline-flex"
-            >
-              Open Assistant
-            </Link>
-            <button
-              onClick={handleSignOut}
-              className="rounded-lg px-3 py-2 text-xs font-medium text-white/40 transition hover:text-white/70"
-            >
-              Sign out
-            </button>
           </div>
-        </div>
+        </section>
 
-        {/* Mobile tabs */}
-        <div className="flex gap-1 overflow-x-auto border-t border-white/[0.04] px-4 py-2 sm:hidden">
-          {(["overview", "reports", "biomarkers", "settings"] as Tab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition ${
-                activeTab === tab
-                  ? "bg-white/[0.08] text-white"
-                  : "text-white/40"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      </header>
+        <section id="trends" className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+          <article className="rounded-2xl border border-white/[0.08] bg-[#101217]/95 p-5 shadow-2xl shadow-black/30 sm:p-7 lg:p-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="font-heading text-xl font-bold text-white">Hemoglobin trend (g/dL)</h2>
+                <p className="mt-1 text-sm text-slate-400">Normal range: 13.5-17.5 g/dL</p>
+              </div>
+              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-red-300/20 bg-red-300/10 px-3 py-1 text-xs font-bold text-red-200">
+                <span className="h-2 w-2 rounded-full bg-red-300" />
+                Below normal
+              </span>
+            </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-        {(error || source) && (
-          <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
-            error
-              ? "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
-              : "border-[#00d97e]/20 bg-[#00d97e]/[0.06] text-[#bfffe1]"
-          }`}>
-            <span className="font-bold">{sourceLabel(source)}</span>
-            <span className="ml-2">{error || "Dashboard data is current."}</span>
-            {error && <button onClick={refresh} className="ml-3 font-bold text-amber-200 hover:text-white">Retry</button>}
+            <div className="mt-8 h-[340px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={hemoglobinTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    dy={10}
+                  />
+                  <YAxis
+                    domain={[10.5, 14]}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    tickCount={6}
+                    width={42}
+                  />
+                  <Tooltip
+                    cursor={{ stroke: "rgba(45,212,191,0.25)", strokeWidth: 1 }}
+                    contentStyle={{
+                      background: "#151922",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      color: "#e2e8f0",
+                    }}
+                    labelStyle={{ color: "#ffffff", fontWeight: 700 }}
+                    formatter={(value) => [value === undefined ? "" : `${value} g/dL`, "Hemoglobin"]}
+                  />
+                  <ReferenceLine
+                    y={13.5}
+                    stroke="#fbbf24"
+                    strokeDasharray="7 7"
+                    strokeWidth={2}
+                    label={{
+                      value: "Lower normal 13.5",
+                      fill: "#fcd34d",
+                      fontSize: 12,
+                      position: "insideTopRight",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="hemoglobin"
+                    stroke="#2dd4bf"
+                    strokeWidth={4}
+                    dot={{ r: 5, fill: "#0f172a", stroke: "#2dd4bf", strokeWidth: 3 }}
+                    activeDot={{ r: 7, fill: "#2dd4bf", stroke: "#ffffff", strokeWidth: 2 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </article>
+
+          <article
+            id="timeline"
+            className="rounded-2xl border border-white/[0.08] bg-[#101217]/95 p-5 shadow-2xl shadow-black/30 sm:p-7 lg:p-8"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="font-heading text-xl font-bold text-white">Health timeline</h2>
+                <p className="mt-1 text-sm text-slate-400">Past CBC report activity</p>
+              </div>
+              <FileText className="h-5 w-5 text-slate-500" />
+            </div>
+
+            <div className="mt-8">
+              {timeline.map(({ date, text, icon: Icon, style }, index) => (
+                <div key={date} className="relative flex gap-4 pb-8 last:pb-0">
+                  {index < timeline.length - 1 ? (
+                    <span className="absolute left-[18px] top-10 h-full w-px bg-white/[0.1]" />
+                  ) : null}
+                  <span className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${style}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 pt-0.5">
+                    <p className="text-sm font-bold text-white">{date}</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">{text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#101217]/95 shadow-2xl shadow-black/30">
+          <div className="flex flex-col gap-2 border-b border-white/[0.08] px-5 py-5 sm:px-7 lg:px-8">
+            <h2 className="font-heading text-xl font-bold text-white">Flagged biomarkers</h2>
+            <p className="text-sm text-slate-400">
+              Latest CBC values compared against standard adult male reference ranges.
+            </p>
           </div>
-        )}
 
-        {activeTab === "overview" && <OverviewTab dashboard={dashboard} userId={userId} onRefresh={refresh} refreshing={refreshing} />}
-        {activeTab === "reports" && <ReportsTab dashboard={dashboard} userId={userId} accessToken={session?.access_token} onRefresh={refresh} />}
-        {activeTab === "biomarkers" && <BiomarkersTab dashboard={dashboard} />}
-        {activeTab === "settings" && <SettingsTab user={user} userId={userId} />}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left">
+              <thead className="border-b border-white/[0.08] bg-white/[0.025] text-xs uppercase tracking-[0.12em] text-slate-500">
+                <tr>
+                  <th className="px-5 py-4 font-semibold sm:px-7 lg:px-8">Biomarker</th>
+                  <th className="px-5 py-4 font-semibold">Your value</th>
+                  <th className="px-5 py-4 font-semibold">Normal range</th>
+                  <th className="px-5 py-4 font-semibold sm:px-7 lg:px-8">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.06]">
+                {biomarkers.map(({ biomarker, value, range, status, style }) => (
+                  <tr key={biomarker} className="transition hover:bg-white/[0.025]">
+                    <td className="px-5 py-4 text-sm font-bold text-white sm:px-7 lg:px-8">{biomarker}</td>
+                    <td className="px-5 py-4 text-sm text-slate-200">{value}</td>
+                    <td className="px-5 py-4 text-sm text-slate-400">{range}</td>
+                    <td className="px-5 py-4 sm:px-7 lg:px-8">
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${style}`}>
+                        {status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </main>
-  );
-}
-
-/* ─── Overview Tab ─────────────────────────────────────────────────────── */
-function OverviewTab({
-  dashboard,
-  userId,
-  onRefresh,
-  refreshing,
-}: {
-  dashboard: DashboardPayload | null;
-  userId: string;
-  onRefresh: () => void;
-  refreshing: boolean;
-}) {
-  const score = dashboard?.health_score;
-  const anomalies = dashboard?.anomalies || [];
-  const topBiomarkers = (dashboard?.biomarkers || []).slice(0, 4);
-  const imagingFindings = anomalies.filter((a) => a.finding_type === "image_finding");
-  const labFindings = anomalies.filter((a) => a.finding_type !== "image_finding");
-
-  return (
-    <div className="space-y-6">
-      {/* Welcome + quick actions */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold sm:text-3xl">Health Dashboard</h1>
-          <p className="mt-1 text-sm text-white/45">
-            {dashboard ? `${dashboard.reports.length} reports · ${anomalies.length} findings` : "Loading your health data..."}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="rounded-xl border border-white/[0.1] px-4 py-2.5 text-xs font-bold text-white/60 transition hover:border-white/[0.2] hover:text-white disabled:opacity-40"
-          >
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
-          <ShareButton userId={userId} dashboard={dashboard} />
-        </div>
-      </div>
-
-      {/* Score + Stats grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <ScoreCard score={score?.score} label="Health Score" suffix="/100" color="emerald" />
-        <StatCard value={dashboard?.reports.length ?? 0} label="Reports" icon="📄" />
-        <StatCard value={score?.latest_biomarkers ?? 0} label="Biomarkers Tracked" icon="🧬" />
-        <StatCard value={score?.finding_count ?? 0} label="Active Findings" icon="⚠️" />
-      </div>
-
-      {/* Upload zone */}
-      <UploadZone userId={userId} onDone={onRefresh} />
-
-      {/* Lab anomalies */}
-      {labFindings.length > 0 && (
-        <section>
-          <h2 className="mb-4 text-lg font-bold">Anomaly Alerts</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {labFindings.slice(0, 6).map((finding) => (
-              <AnomalyCard key={`${finding.id}-${finding.biomarker}`} finding={finding} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Imaging findings (from scans, X-rays, etc.) */}
-      {imagingFindings.length > 0 && (
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-bold">
-            <span>Imaging Findings</span>
-            <span className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[10px] font-medium text-white/40">{imagingFindings.length}</span>
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {imagingFindings.map((finding) => (
-              <ImagingFindingCard key={`${finding.id}-${finding.biomarker}`} finding={finding} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Top biomarkers */}
-      {topBiomarkers.length > 0 && (
-        <section>
-          <h2 className="mb-4 text-lg font-bold">Key Biomarkers</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {topBiomarkers.map((b) => (
-              <BiomarkerCard key={b.name} name={b.name} latest={b.latest} history={b.history} points={b.points} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Empty state when nothing analyzed yet */}
-      {anomalies.length === 0 && topBiomarkers.length === 0 && (dashboard?.reports.length ?? 0) === 0 && (
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
-          <p className="text-4xl">🩺</p>
-          <p className="mt-4 text-lg font-bold text-white/60">No analyzed data yet</p>
-          <p className="mt-2 text-sm text-white/35">Upload a blood report, prescription, or scan to get started.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Reports Tab ──────────────────────────────────────────────────────── */
-function ReportsTab({
-  dashboard,
-  userId,
-  onRefresh,
-  accessToken,
-}: {
-  dashboard: DashboardPayload | null;
-  userId: string;
-  accessToken?: string;
-  onRefresh: () => void;
-}) {
-  const reports = dashboard?.reports || [];
-  const [files, setFiles] = useState<Array<{ name: string; url: string; created_at: string }>>([]);
-
-  useEffect(() => {
-    if (isSupabaseConfigured && userId !== "local-user") {
-      listUserFiles(userId).then(setFiles).catch(() => {});
-    }
-  }, [userId]);
-
-  const handleDelete = async (report: Record<string, unknown>) => {
-    const id = Number(report.id || 0);
-    const sourcePath = String(report.source_path || "");
-    if (!id) return;
-    if (!window.confirm("Delete this report? This cannot be undone.")) return;
-    await deleteReport(id, userId, sourcePath);
-    onRefresh();
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold">Your Reports</h1>
-        <span className="text-sm text-white/40">{reports.length} total</span>
-      </div>
-
-      <UploadZone userId={userId} accessToken={accessToken} onDone={onRefresh} />
-
-      {reports.length === 0 ? (
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
-          <p className="text-4xl">📋</p>
-          <p className="mt-4 text-lg font-bold text-white/60">No reports yet</p>
-          <p className="mt-2 text-sm text-white/35">Upload a blood report, prescription, or scan to get started.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {reports.map((report, idx) => (
-            <ReportRow key={String(report.id || idx)} report={report} onDelete={() => handleDelete(report)} />
-          ))}
-        </div>
-      )}
-
-      {/* Uploaded files from Supabase Storage */}
-      {files.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-lg font-bold">Uploaded Files</h2>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {files.map((file) => (
-              <a
-                key={file.name}
-                href={file.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition hover:border-[#00d97e]/30"
-              >
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#00d97e]/[0.08] text-[#00d97e] text-xs">📎</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-white/70">{file.name}</p>
-                  <p className="text-[10px] text-white/30">{file.created_at ? new Date(file.created_at).toLocaleDateString() : ""}</p>
-                </div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function ReportRow({ report, onDelete }: { report: Record<string, unknown>; onDelete?: () => void }) {
-  const name = String(report.patient_name || "Unknown");
-  const date = String(report.report_date || "No date");
-  const lab = String(report.lab_name || "Unknown lab");
-  const biomarkers = Number(report.biomarker_count || 0);
-  const id = Number(report.local_report_id || report.id || 0);
-  const reportStatus = String(report.report_status || "").toLowerCase();
-  // Image reports are fully analyzed even with 0 biomarkers (they have findings instead).
-  const isImageReport = reportStatus === "image" || reportStatus === "scan";
-  const analyzed = biomarkers > 0 || isImageReport || Boolean(report.analyzed);
-  const detail = isImageReport
-    ? `${date} · ${lab} · image findings`
-    : `${date} · ${lab} · ${biomarkers} biomarkers`;
-
-  return (
-    <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition hover:border-white/[0.12]">
-      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#00d97e]/[0.08] text-[#00d97e]">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M13 3v5h5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold">{name}</p>
-        <p className="mt-0.5 text-xs text-white/40">{detail}</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className={`hidden rounded-lg border px-2.5 py-1.5 text-[11px] font-bold sm:inline-flex ${
-          analyzed
-            ? "border-[#00d97e]/20 bg-[#00d97e]/[0.06] text-[#00d97e]"
-            : "border-amber-300/20 bg-amber-300/[0.06] text-amber-200"
-        }`}>
-          {analyzed ? "Analyzed" : "Syncing"}
-        </span>
-        <Link
-          href={`/chat?ask=${encodeURIComponent(`Explain report #${id} in simple terms`)}`}
-          className="shrink-0 rounded-lg border border-white/[0.08] px-3 py-1.5 text-[11px] font-bold text-white/50 transition hover:border-[#00d97e]/30 hover:text-[#00d97e]"
-        >
-          Ask Vaidy
-        </Link>
-        {onDelete && isSupabaseConfigured && (
-          <button
-            onClick={onDelete}
-            className="shrink-0 rounded-lg border border-red-400/20 px-2.5 py-1.5 text-[11px] font-bold text-red-300/50 transition hover:border-red-400/40 hover:text-red-300"
-          >
-            Delete
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Biomarkers Tab ───────────────────────────────────────────────────── */
-function BiomarkersTab({ dashboard }: { dashboard: DashboardPayload | null }) {
-  const biomarkers = dashboard?.biomarkers || [];
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-extrabold">Biomarker Trends</h1>
-      {biomarkers.length === 0 ? (
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
-          <p className="text-4xl">🧬</p>
-          <p className="mt-4 text-lg font-bold text-white/60">No biomarker data yet</p>
-          <p className="mt-2 text-sm text-white/35">Upload at least one report to see trends.</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {biomarkers.map((b) => (
-            <BiomarkerCard key={b.name} name={b.name} latest={b.latest} history={b.history} points={b.points} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Settings Tab ─────────────────────────────────────────────────────── */
-function SettingsTab({ user, userId }: { user: { email?: string } | null; userId: string }) {
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-extrabold">Settings</h1>
-      <div className="max-w-lg space-y-4">
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/35">Account</p>
-          <div className="mt-3 space-y-2">
-            <InfoRow label="Email" value={user?.email || "Local mode"} />
-            <InfoRow label="User ID" value={userId} />
-          </div>
-        </div>
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/35">Data</p>
-          <p className="mt-3 text-sm text-white/50">
-            All your health data is stored securely. Reports are processed locally and synced to your account.
-          </p>
-        </div>
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/35">Links</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/privacy" className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-white/50 hover:text-white">Privacy Policy</Link>
-            <Link href="/terms" className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-white/50 hover:text-white">Terms of Service</Link>
-            <Link href="/contact" className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-white/50 hover:text-white">Contact</Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-lg bg-white/[0.02] px-3 py-2">
-      <span className="text-xs font-semibold text-white/40">{label}</span>
-      <span className="truncate text-xs text-white/70">{value}</span>
-    </div>
-  );
-}
-
-/* ─── Shared Components ────────────────────────────────────────────────── */
-
-function ScoreCard({ score, label, suffix, color }: { score: number | undefined; label: string; suffix: string; color: string }) {
-  const displayScore = score ?? "--";
-  const ringPercent = typeof score === "number" ? score : 0;
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
-      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#00d97e]/70">{label}</p>
-      <div className="mt-3 flex items-end gap-2">
-        <span className="text-5xl font-black">{displayScore}</span>
-        <span className="pb-1.5 text-sm text-white/35">{suffix}</span>
-      </div>
-      {/* Progress ring background */}
-      <div className="absolute -right-4 -top-4 h-24 w-24 opacity-20">
-        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-          <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="8" className="text-white/10" />
-          <circle
-            cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="8"
-            className="text-[#00d97e]"
-            strokeDasharray={`${ringPercent * 2.51} 251`}
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ value, label, icon }: { value: number; label: string; icon: string }) {
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-2xl">{icon}</span>
-      </div>
-      <p className="mt-3 text-3xl font-black">{value}</p>
-      <p className="mt-1 text-xs text-white/40">{label}</p>
-    </div>
-  );
-}
-
-function AnomalyCard({ finding }: { finding: AnomalyFinding }) {
-  const severityColors: Record<string, string> = {
-    urgent: "border-red-400/20 bg-red-400/[0.04]",
-    concern: "border-amber-400/20 bg-amber-400/[0.04]",
-    watch: "border-[#00d97e]/20 bg-[#00d97e]/[0.04]",
-  };
-  const severityTextColors: Record<string, string> = {
-    urgent: "text-red-300",
-    concern: "text-amber-300",
-    watch: "text-[#00d97e]",
-  };
-  const cls = severityColors[finding.severity] || severityColors.watch;
-  const textCls = severityTextColors[finding.severity] || severityTextColors.watch;
-
-  return (
-    <article className={`rounded-xl border p-4 ${cls}`}>
-      <div className="flex items-center gap-2">
-        <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${textCls}`}>
-          {finding.severity}
-        </span>
-      </div>
-      <h3 className="mt-2 text-sm font-bold capitalize">{finding.biomarker}</h3>
-      <p className="mt-1.5 text-xs leading-5 text-white/50">{finding.description}</p>
-      <Link
-        href={`/chat?ask=${encodeURIComponent(finding.description)}`}
-        className="mt-3 inline-flex text-[11px] font-bold text-[#00d97e] hover:underline"
-      >
-        Ask Vaidy →
-      </Link>
-    </article>
-  );
-}
-
-function ImagingFindingCard({ finding }: { finding: AnomalyFinding }) {
-  const severityColors: Record<string, string> = {
-    urgent: "border-red-400/25 bg-red-400/[0.05]",
-    concern: "border-amber-400/25 bg-amber-400/[0.05]",
-    watch: "border-sky-400/20 bg-sky-400/[0.04]",
-  };
-  const severityTextColors: Record<string, string> = {
-    urgent: "text-red-300",
-    concern: "text-amber-300",
-    watch: "text-sky-300",
-  };
-  const cls = severityColors[finding.severity] || severityColors.watch;
-  const textCls = severityTextColors[finding.severity] || severityTextColors.watch;
-  const modality = String((finding.metrics as Record<string, unknown>)?.modality || "").trim();
-  const bodyRegion = String((finding.metrics as Record<string, unknown>)?.body_region || "").trim();
-  const tags = [modality, bodyRegion].filter(Boolean);
-
-  return (
-    <article className={`rounded-xl border p-4 ${cls}`}>
-      <div className="flex items-center gap-2">
-        <span className="text-sm">🩻</span>
-        <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${textCls}`}>
-          {finding.severity}
-        </span>
-      </div>
-      <h3 className="mt-2 text-sm font-bold">{finding.biomarker}</h3>
-      <p className="mt-1.5 text-xs leading-5 text-white/55">{finding.description}</p>
-      {tags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {tags.map((tag) => (
-            <span key={tag} className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[10px] capitalize text-white/45">{tag}</span>
-          ))}
-        </div>
-      )}
-      <Link
-        href={`/chat?ask=${encodeURIComponent(`Explain this imaging finding: ${finding.biomarker} — ${finding.description}`)}`}
-        className="mt-3 inline-flex text-[11px] font-bold text-[#00d97e] hover:underline"
-      >
-        Ask Vaidy →
-      </Link>
-    </article>
-  );
-}
-
-function BiomarkerCard({
-  name,
-  latest,
-  history,
-  points,
-}: {
-  name: string;
-  latest: BiomarkerHistoryRow;
-  history: BiomarkerHistoryRow[];
-  points: number;
-}) {
-  const flagColor = latest?.flag === "high" || latest?.flag === "H"
-    ? "text-red-300"
-    : latest?.flag === "low" || latest?.flag === "L"
-      ? "text-amber-300"
-      : "text-[#00d97e]";
-
-  return (
-    <article className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold capitalize">{name}</h3>
-          <p className="mt-1 text-xs text-white/40">
-            <span className={flagColor}>{latest?.value ?? "--"}</span> {latest?.unit || ""}
-            {latest?.ref_range ? ` (ref: ${latest.ref_range})` : ""}
-          </p>
-        </div>
-        <span className="rounded-md border border-white/[0.06] px-2 py-0.5 text-[10px] text-white/35">{points} pts</span>
-      </div>
-      <MiniChart rows={history} />
-    </article>
-  );
-}
-
-function MiniChart({ rows }: { rows: Array<{ value: number | null; flag: string }> }) {
-  const values = rows.map((r) => r.value).filter((v): v is number => typeof v === "number");
-  if (values.length < 2) {
-    return <div className="mt-4 h-16 rounded-lg bg-white/[0.02] p-3 text-[10px] text-white/25">Need 2+ data points for trend</div>;
-  }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const spread = max - min || 1;
-  const points = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * 100;
-      const y = 85 - ((v - min) / spread) * 70;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg className="mt-4 h-16 w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={points} fill="none" stroke="#00d97e" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
-      {values.map((v, i) => {
-        const x = (i / (values.length - 1)) * 100;
-        const y = 85 - ((v - min) / spread) * 70;
-        return <circle key={i} cx={x} cy={y} r="2" fill="#fff" vectorEffect="non-scaling-stroke" />;
-      })}
-    </svg>
-  );
-}
-
-function UploadZone({ userId, accessToken, onDone }: { userId: string; accessToken?: string; onDone: () => void }) {
-  const [uploadingCount, setUploadingCount] = useState(0);
-  const [uploadMsg, setUploadMsg] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-
-  const processOneFile = useCallback(async (file: File) => {
-    try {
-      const started = await uploadReportWithProgress(file, { userId, supabaseAccessToken: accessToken });
-      await streamUploadProgress(started.job_id, {
-        onStatus: (p: UploadStatusPayload) => setUploadMsg(`${file.name}: ${String(p.message || p.stage || "Processing...")}`),
-        onDone: () => { setUploadMsg(`${file.name}: Done`); onDone(); },
-        onError: (msg) => setUploadMsg(`${file.name}: ${msg}`),
-      });
-    } catch (err) {
-      setUploadMsg(`${file.name}: ${err instanceof Error ? err.message : "Upload failed"}`);
-    }
-  }, [userId, accessToken, onDone]);
-
-  const handleFiles = useCallback(async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList);
-    setUploadingCount((c) => c + files.length);
-    setUploadMsg(`Processing ${files.length} file${files.length === 1 ? "" : "s"} in parallel...`);
-    // Run all uploads in parallel — each one streams its own progress
-    await Promise.all(files.map((file) => processOneFile(file)));
-    setUploadingCount((c) => Math.max(0, c - files.length));
-    onDone();
-  }, [processOneFile, onDone]);
-
-  const onInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    handleFiles(e.target.files);
-    e.target.value = "";
-  };
-
-  const onDrop = (e: DragEvent<HTMLLabelElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    handleFiles(e.dataTransfer.files);
-  };
-
-  const uploading = uploadingCount > 0;
-
-  return (
-    <label
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={onDrop}
-      className={`block cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition ${
-        isDragging
-          ? "border-[#00d97e]/60 bg-[#00d97e]/[0.06]"
-          : "border-white/[0.08] bg-white/[0.015] hover:border-[#00d97e]/30 hover:bg-white/[0.025]"
-      }`}
-    >
-      <input className="hidden" type="file" multiple accept=".pdf,.json,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={onInputChange} disabled={uploading} />
-      <div className="mx-auto w-fit rounded-xl bg-[#00d97e]/[0.1] p-3">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[#00d97e]"><path d="M12 16V4m0 0L7 9m5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </div>
-      <p className="mt-3 text-sm font-bold text-white/70">
-        {uploading ? `Processing ${uploadingCount} file${uploadingCount === 1 ? "" : "s"}...` : "Drop reports here or click to upload (multi-select supported)"}
-      </p>
-      <p className="mt-1 text-xs text-white/35">
-        {uploadMsg || "PDF, images, JSON — blood reports, prescriptions, scans"}
-      </p>
-    </label>
-  );
-}
-
-function ShareButton({ userId, dashboard }: { userId: string; dashboard: DashboardPayload | null }) {
-  const [shareUrl, setShareUrl] = useState("");
-  const [sharing, setSharing] = useState(false);
-
-  const handleShare = async () => {
-    setSharing(true);
-    try {
-      const reportIds = (dashboard?.reports || []).map((r) => Number(r.id || r.local_report_id || 0)).filter(Boolean);
-      const result = await createShareLink(userId, reportIds.slice(0, 5));
-      setShareUrl(result.url);
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(result.url);
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setSharing(false);
-    }
-  };
-
-  return (
-    <div className="relative">
-      <button
-        onClick={handleShare}
-        disabled={sharing || !dashboard?.reports?.length}
-        className="rounded-xl bg-[#00d97e] px-4 py-2.5 text-xs font-extrabold text-[#03120a] transition hover:bg-[#2ff0a0] disabled:opacity-40"
-      >
-        {sharing ? "Creating..." : shareUrl ? "Copied!" : "Share with Doctor"}
-      </button>
-      {shareUrl && (
-        <p className="absolute right-0 top-full mt-2 w-64 truncate rounded-lg border border-white/[0.08] bg-[#0a0d16] px-3 py-2 text-[10px] text-white/50">
-          {shareUrl}
-        </p>
-      )}
-    </div>
   );
 }

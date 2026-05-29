@@ -649,42 +649,54 @@ function AnimatedCounter({ active, value, decimals = 0, suffix = "" }) {
   );
 }
 
+function UseCaseIcon({ variant }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {variant === "stethoscope" ? (
+        <>
+          <path d="M6 4v5a4 4 0 0 0 8 0V4" />
+          <path d="M4 4h4" />
+          <path d="M12 4h4" />
+          <path d="M10 13v2a5 5 0 0 0 10 0v-1" />
+          <circle cx="20" cy="10" r="2" />
+        </>
+      ) : variant === "heart" ? (
+        <path d="M20.8 5.8a5 5 0 0 0-7.1 0L12 7.5l-1.7-1.7a5 5 0 0 0-7.1 7.1L12 21l8.8-8.1a5 5 0 0 0 0-7.1Z" />
+      ) : (
+        <>
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" />
+          <path d="M8 7h8" />
+          <path d="M8 11h6" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function SocialProofSection() {
   const mobile = useIsMobile();
   const statsRef = useRef(null);
   const [statsVisible, setStatsVisible] = useState(false);
   const stats = [
-    { value: 12400, suffix: "+", label: "Reports Analyzed" },
-    { value: 4.9, decimals: 1, suffix: "★", label: "Average Rating" },
-    { value: 8, label: "Cities across India" },
+    { value: 12, label: "Biomarkers tracked per report" },
+    { display: "< 5 sec", label: "Report analysis time" },
+    { value: 0, label: "Data sold to insurers" },
   ];
-  const testimonials = [
+  const useCases = [
     {
-      initials: "AR",
-      name: "Ananya Rao",
-      city: "Bengaluru",
-      role: "Working professional",
-      rating: "5.0",
-      quote:
-        "My thyroid report always felt like a wall of numbers. Vaidy explained TSH and T3 in plain English, so I walked into my doctor visit calmer and prepared.",
+      icon: "stethoscope",
+      title: "Working professionals",
+      desc: "Finally understand your annual health checkup without Googling every term.",
     },
     {
-      initials: "RM",
-      name: "Rohit Mehra",
-      city: "Delhi",
-      role: "Caregiver",
-      rating: "4.9",
-      quote:
-        "I manage my father's diabetes reports every month, and I used to miss small changes. Vaidy helped me compare HbA1c and fasting glucose trends without digging through old PDFs.",
+      icon: "heart",
+      title: "Caregivers",
+      desc: "Track a parent's or family member's reports and spot changes over time.",
     },
     {
-      initials: "SK",
-      name: "Sara Khan",
-      city: "Mumbai",
-      role: "College student",
-      rating: "5.0",
-      quote:
-        "I uploaded a routine blood test and finally noticed my Vitamin D was low. Vaidy made the result easy to understand early, before it became a bigger problem.",
+      icon: "book",
+      title: "First-timers",
+      desc: "Got your first blood test and have no idea what it means? Vaidy explains it plainly.",
     },
   ];
 
@@ -748,7 +760,7 @@ function SocialProofSection() {
                 }}
               >
                 <p style={{ margin: 0, color: "rgba(255,255,255,0.94)", fontSize: mobile ? 32 : 38, lineHeight: 1, fontWeight: 800, letterSpacing: "-0.04em", fontFamily: "'DM Sans', sans-serif" }}>
-                  <AnimatedCounter active={statsVisible} value={stat.value} decimals={stat.decimals || 0} suffix={stat.suffix || ""} />
+                  {stat.display || <AnimatedCounter active={statsVisible} value={stat.value} decimals={stat.decimals || 0} suffix={stat.suffix || ""} />}
                 </p>
                 <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.45)", fontSize: 13.5, fontFamily: "'DM Sans', sans-serif" }}>
                   {stat.label}
@@ -759,9 +771,9 @@ function SocialProofSection() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginTop: 24 }}>
-          {testimonials.map((item, index) => (
+          {useCases.map((item, index) => (
             <motion.article
-              key={item.name}
+              key={item.title}
               initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.28 }}
@@ -777,7 +789,7 @@ function SocialProofSection() {
                 fontFamily: "'DM Sans', sans-serif",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, marginBottom: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                   <div
                     style={{
@@ -790,30 +802,21 @@ function SocialProofSection() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: 13,
-                      fontWeight: 800,
                       boxShadow: "0 0 24px rgba(0,217,126,0.08)",
                       flexShrink: 0,
                     }}
                   >
-                    {item.initials}
+                    <UseCaseIcon variant={item.icon} />
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, color: "rgba(255,255,255,0.92)", fontSize: 15.5, fontWeight: 700 }}>
-                      {item.name}
+                      {item.title}
                     </h3>
-                    <p style={{ margin: "3px 0 0", color: "rgba(255,255,255,0.38)", fontSize: 12.5 }}>
-                      {item.role} · {item.city}
-                    </p>
                   </div>
-                </div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "rgba(0,217,126,0.76)", fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
-                  <span aria-hidden="true">★★★★★</span>
-                  <span>{item.rating}</span>
                 </div>
               </div>
               <p style={{ margin: 0, color: "rgba(255,255,255,0.58)", fontSize: 14, lineHeight: 1.75 }}>
-                "{item.quote}"
+                {item.desc}
               </p>
             </motion.article>
           ))}
@@ -872,6 +875,10 @@ function UploadSection() {
                         <span key={b} style={{ padding: "4px 12px", background: "rgba(0,217,126,0.1)", border: "1px solid rgba(0,217,126,0.2)", borderRadius: 20, fontSize: 12, color: EMERALD, fontFamily: "'DM Sans', sans-serif" }}>{b}</span>
                       ))}
                     </div>
+                    <Link href="/chat?demo=true" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 22, color: EMERALD, fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", textDecoration: "none" }}>
+                      Try demo
+                      <span aria-hidden="true">→</span>
+                    </Link>
                   </motion.div>
                 ) : (
                   <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>

@@ -191,12 +191,20 @@ type UploadStartHandlers = {
 };
 
 export function vaidyApiBase() {
-  const configured = process.env.NEXT_PUBLIC_VAIDY_API_URL;
+  const configured = process.env.NEXT_PUBLIC_VAIDY_API_URL || process.env.NEXT_PUBLIC_API_URL;
   let base = configured && configured.trim() ? configured.trim() : "";
   while (base.endsWith("/")) {
     base = base.slice(0, -1);
   }
   return base;
+}
+
+function vaidyBackendUrl(path: string) {
+  const base = vaidyApiBase();
+  if (!base) {
+    return `/api/vaidy${path}`;
+  }
+  return `${base}${path}`;
 }
 
 function vaidyApiUrl(path: string) {
@@ -205,6 +213,22 @@ function vaidyApiUrl(path: string) {
     return `/api/vaidy${path}`;
   }
   return `${base}/api${path}`;
+}
+
+export async function checkVaidyHealth(timeoutMs = 2000): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(vaidyBackendUrl("/health"), {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 export async function getVaidyStatus(sessionId = ""): Promise<VaidyStatus> {
