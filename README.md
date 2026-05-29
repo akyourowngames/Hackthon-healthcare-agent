@@ -2,7 +2,7 @@
 
 <br/>
 
-<img src="https://img.shields.io/badge/vaidy-AI%20Health%20Copilot-34d399?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNSIgZmlsbD0iIzM0ZDM5OSIvPjwvc3ZnPg==" alt="Vaidy"/>
+<img src="https://img.shields.io/badge/vaidy-AI%20Health%20Copilot-34d399?style=for-the-badge" alt="Vaidy"/>
 
 # Vaidy
 
@@ -23,11 +23,21 @@
 
 ---
 
+## 🖼️ Preview
+
+<div align="center">
+  <img src="./screenshots/vaidy-landing.png" alt="Vaidy Landing Page — Your health, finally decoded." width="100%"/>
+  <br/>
+  <sub>Live at <a href="https://vaidy.vercel.app/">vaidy.vercel.app</a></sub>
+</div>
+
+---
+
 ## 📖 Overview
 
 India has 1.4 billion people and a significant gap between medical knowledge and patients. Lab reports arrive full of jargon, reference ranges are context-free, and most people have no easy way to understand what their own health data means.
 
-**Vaidy** bridges that gap. It acts as a personal health intelligence layer — reading any diagnostic report you upload, building a longitudinal health timeline, detecting trends across visits, and answering your questions in plain language (English or Hindi). No doctor appointment required to understand your own health.
+**Vaidy** bridges that gap. It acts as a personal health intelligence layer — reading any diagnostic report you upload, building a longitudinal health timeline, detecting trends across visits, and answering your questions in plain language. Supports all major Indian diagnostic labs including Apollo, Thyrocare, Lal Path Labs, Dr. Lal and 50+ more.
 
 ---
 
@@ -40,22 +50,7 @@ India has 1.4 billion people and a significant gap between medical knowledge and
 | 💬 **Plain Language Always** | No jargon. Explanations anyone can follow |
 | 📈 **Trend Detection** | Spots patterns and anomalies across reports over time |
 | 🤖 **Ask Anything** | Chat with your full health history like a conversation |
-| 🇮🇳 **India-First** | Understands Apollo, Thyrocare, Lal Path Labs, and common Indian lab formats |
-
----
-
-## 🖥️ Demo
-
-> **Live at:** [https://vaidy.vercel.app/](https://vaidy.vercel.app/)
-
-The landing page showcases the full product experience:
-
-- **Hero** — Animated headline with particle field and glow orbs
-- **Upload Preview** — Drag-and-drop report uploader with shimmer border effect
-- **Explain Demo** — Real-time typewriter animation showing AI report analysis, with keyword highlighting (hemoglobin, anemia, etc.)
-- **Health Timeline** — Interactive scrollable timeline of lab visits over time
-- **Feature Cards** — Six animated feature cards with staggered entrance
-- **Final CTA** — Conversion section with hover-swap button text animation
+| 🇮🇳 **India-First** | Understands Apollo, Thyrocare, Lal Path Labs, Dr. Lal & 50+ Indian lab formats |
 
 ---
 
@@ -74,7 +69,7 @@ The landing page showcases the full product experience:
 ### Design System
 - **Color palette** — Deep void black (`#050508`) background with emerald (`#34d399`) and teal (`#5eead4`) accent colors
 - **Glass morphism** — Frosted glass cards using `backdrop-blur` and semi-transparent borders
-- **Custom animations** — `float`, `pulse-glow`, `shimmer`, `wave` keyframes defined in both Tailwind config and CSS
+- **Custom animations** — `float`, `pulse-glow`, `shimmer`, `wave` keyframes in Tailwind config and CSS
 - **Responsive** — Mobile-first layout, collapsible navigation, horizontal-scroll timeline on small screens
 
 ---
@@ -148,8 +143,8 @@ frontend/
 ### Animations
 - **Particle Field** — Uses a seeded pseudo-random number generator so particles render identically on server and client (no hydration mismatch)
 - **Shimmer Border** — CSS `::before` pseudo-element with animated `background-position` creates a traveling light effect on the upload card
-- **Glow Orbs** — Layered `float` and `wave` animations create organic, depth-of-field-like motion in the hero
-- **Typewriter Effect** — `useEffect` interval drives character-by-character text reveal with keyword highlighting via regex splitting
+- **Glow Orbs** — Layered `float` and `wave` animations create organic, depth-of-field-like background motion in the hero
+- **Typewriter Effect** — `useEffect` interval drives character-by-character text reveal with regex-based keyword highlighting
 
 ### Accessibility
 - All interactive elements have `focus-visible` ring styles
@@ -174,7 +169,7 @@ cd frontend
 vercel
 ```
 
-Or connect your fork to [vercel.com](https://vercel.com) for automatic deployments on every push.
+Or connect your fork to [vercel.com](https://vercel.com) for automatic deployments on every push to `main`.
 
 ---
 
@@ -186,7 +181,7 @@ Or connect your fork to [vercel.com](https://vercel.com) for automatic deploymen
 - [ ] PDF / image report ingestion (Apollo, Thyrocare, AIIMS formats)
 - [ ] Doctor-facing summary export
 - [ ] WhatsApp / SMS report upload flow for feature-phone users
-- [ ] Trend graphs with interactive charts
+- [ ] Trend graphs with interactive charts (Recharts / D3)
 
 ---
 
@@ -202,7 +197,7 @@ git push origin feature/your-feature-name
 # Open a Pull Request
 ```
 
-Please follow the existing code style (TypeScript strict mode, Tailwind utility classes, Framer Motion for animations).
+Please follow the existing code style — TypeScript strict mode, Tailwind utility classes, and Framer Motion for all animations.
 
 ---
 
