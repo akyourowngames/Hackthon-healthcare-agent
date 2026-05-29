@@ -58,6 +58,7 @@ class AgentSettings:
     supabase_enabled: bool
     supabase_url: str
     supabase_service_role_key: str
+    supabase_storage_bucket: str
     supabase_timeout_seconds: float
     supabase_sync_async: bool
     memory_enabled: bool
@@ -144,6 +145,7 @@ def load_agent_settings(path: str | Path | None = None) -> AgentSettings:
             ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY"),
             values["supabase.service_role_key"],
         ),
+        supabase_storage_bucket=_env_value("VAIDY_SUPABASE_STORAGE_BUCKET", values["supabase.storage_bucket"]),
         supabase_timeout_seconds=parse_float(
             _env_value("VAIDY_SUPABASE_TIMEOUT_SECONDS", values["supabase.timeout_seconds"])
         ),

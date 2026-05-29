@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
 import {
   ChatDonePayload,
   EvidenceHit,
@@ -64,6 +65,7 @@ const languageOptions = [
 ];
 
 const DEFAULT_ACCEPT = ".pdf,.json,.txt,.md,.png,.jpg,.jpeg,.webp,.heic,.bmp,.tif,.tiff";
+const DEFAULT_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".heic", ".bmp", ".tif", ".tiff"];
 const FLUSH_INTERVAL_MS = 30;
 
 function makeId(prefix: string) {
@@ -80,7 +82,19 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function fileExtension(name: string) {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
+
+function isImageFile(name: string, status: VaidyStatus | null) {
+  const ext = fileExtension(name);
+  const imageExtensions = status?.image_extensions?.length ? status.image_extensions : DEFAULT_IMAGE_EXTENSIONS;
+  return imageExtensions.includes(ext);
+}
+
 export default function AssistantConsole() {
+  const { userId: authUserId, session } = useAuth();
   const [messages, setMessages] = useState<ChatRecord[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<VaidyStatus | null>(null);
@@ -139,12 +153,18 @@ export default function AssistantConsole() {
       setStatus(s);
       setFreshUpload(s.fresh_upload ?? null);
       const saved = window.localStorage.getItem(USER_KEY);
-      setUserId((s.supabase?.configured && saved) ? saved : s.default_user_id || "local-user");
+      const nextUserId = s.supabase?.configured && authUserId !== "local-user"
+        ? authUserId
+        : (s.supabase?.configured && saved) ? saved : s.default_user_id || "local-user";
+      setUserId(nextUserId);
+      if (s.supabase?.configured && nextUserId !== "local-user") {
+        window.localStorage.setItem(USER_KEY, nextUserId);
+      }
       setStatusError("");
     } catch (e) {
       setStatusError(e instanceof Error ? e.message : "API offline");
     }
-  }, []);
+  }, [authUserId]);
 
   useEffect(() => { refreshStatus(); }, [refreshStatus]);
 
@@ -230,11 +250,15 @@ export default function AssistantConsole() {
   const uploadOneFile = useCallback(async (file: File, relativePath: string) => {
     const itemId = makeId("up");
     const label = relativePath || file.name;
-    setUploads((cur) => [...cur, { id: itemId, name: file.name, label, size: file.size, stage: "queued", percent: 0, message: "Queued", isImage: /\.(png|jpe?g|webp|heic|bmp|tiff?)$/i.test(file.name) }]);
+    setUploads((cur) => [...cur, { id: itemId, name: file.name, label, size: file.size, stage: "queued", percent: 0, message: "Queued", isImage: isImageFile(file.name, status) }]);
     try {
       patchUpload(itemId, { stage: "uploading", message: "Uploading", percent: 1 });
       const started = await uploadReportWithProgress(file, {
-        localOnly: false, userId, sessionId: sessionIdRef.current, relativePath: label,
+        localOnly: false,
+        userId,
+        sessionId: sessionIdRef.current,
+        relativePath: label,
+        supabaseAccessToken: session?.access_token,
         onUploadProgress: (loaded, total) => {
           const pct = total ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
           patchUpload(itemId, { stage: "uploading", percent: pct, message: `Uploading ${pct}%` });
@@ -260,7 +284,7 @@ export default function AssistantConsole() {
       patchUpload(itemId, { stage: "error", message: "Failed", error: msg });
       appendSystem(`${label}: ${msg}`, "error");
     }
-  }, [appendSystem, patchUpload, syncSessionId, userId]);
+  }, [appendSystem, patchUpload, syncSessionId, userId, status, session?.access_token]);
 
   const uploadFiles = useCallback(async (incoming: Array<{ file: File; path: string }>) => {
     if (!incoming.length) return;

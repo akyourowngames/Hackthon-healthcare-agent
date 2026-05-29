@@ -155,6 +155,9 @@ def find_duplicate_report_id(
 def deduplicate_reports(settings: AgentSettings | None = None) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
+    removed: list[int] = []
+    kept: list[int] = []
+    affected_users: set[str] = set()
     with _connect(active_settings) as connection:
         rows = connection.execute("SELECT id, user_id, source_path, report_json FROM reports ORDER BY id ASC").fetchall()
         groups: dict[str, list[dict[str, Any]]] = {}
@@ -164,8 +167,6 @@ def deduplicate_reports(settings: AgentSettings | None = None) -> dict[str, Any]
                 continue
             key = str(row["user_id"] or active_settings.default_user_id) + "|" + _report_fingerprint(payload)
             groups.setdefault(key, []).append(dict(row))
-        removed: list[int] = []
-        kept: list[int] = []
         for group in groups.values():
             if len(group) <= 1:
                 continue
@@ -176,12 +177,19 @@ def deduplicate_reports(settings: AgentSettings | None = None) -> dict[str, Any]
                 if report_id == int(keep["id"]):
                     continue
                 removed.append(report_id)
+                affected_users.add(str(item.get("user_id") or active_settings.default_user_id))
                 connection.execute("DELETE FROM report_chunks WHERE report_id = ?", (report_id,))
                 connection.execute("DELETE FROM biomarker_history WHERE report_id = ?", (report_id,))
                 connection.execute("DELETE FROM reports WHERE id = ?", (report_id,))
-        if removed:
-            _refresh_anomaly_findings(connection, active_settings.default_user_id, active_settings)
+        for user_id in affected_users:
+            _refresh_anomaly_findings(connection, user_id, active_settings)
         connection.commit()
+    # Mirror the removals and refreshed findings to Supabase so the cloud view
+    # matches local after de-duplication.
+    if removed:
+        _delete_supabase_reports(removed, active_settings)
+    for user_id in affected_users:
+        _sync_supabase_findings(user_id, active_settings)
     return {"removed": removed, "kept": kept, "removed_count": len(removed)}
 
 
@@ -251,6 +259,51 @@ def source_exists(source_path: str | Path, settings: AgentSettings | None = None
     return row is not None
 
 
+def report_evidence(report_id: int, limit: int | None = None, settings: AgentSettings | None = None) -> list[SearchHit]:
+    """Return all stored chunks for one report as evidence hits.
+
+    Used when a user references a specific stored report so the agent answers
+    from that report's own findings instead of relying only on semantic search.
+    """
+    active_settings = settings or load_agent_settings()
+    initialize_database(active_settings)
+    with _connect(active_settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT chunks.id AS chunk_id, chunks.report_id, chunks.text,
+                   reports.patient_name, reports.report_date, reports.lab_name
+            FROM report_chunks AS chunks
+            JOIN reports ON reports.id = chunks.report_id
+            WHERE chunks.report_id = ?
+            ORDER BY chunks.id ASC
+            """,
+            (int(report_id),),
+        ).fetchall()
+    hits = [
+        SearchHit(
+            report_id=int(row["report_id"]),
+            chunk_id=int(row["chunk_id"]),
+            score=1.0,
+            text=str(row["text"]),
+            patient_name=str(row["patient_name"] or ""),
+            report_date=str(row["report_date"] or ""),
+            lab_name=str(row["lab_name"] or ""),
+        )
+        for row in rows
+    ]
+    if limit:
+        return hits[: max(1, int(limit))]
+    return hits
+
+
+def existing_report_ids(settings: AgentSettings | None = None) -> set[int]:
+    active_settings = settings or load_agent_settings()
+    initialize_database(active_settings)
+    with _connect(active_settings) as connection:
+        rows = connection.execute("SELECT id FROM reports").fetchall()
+    return {int(row["id"]) for row in rows}
+
+
 def search_reports(query: str, limit: int | None = None, settings: AgentSettings | None = None) -> list[SearchHit]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
@@ -266,24 +319,58 @@ def search_reports(query: str, limit: int | None = None, settings: AgentSettings
             JOIN reports ON reports.id = chunks.report_id
             """
         ).fetchall()
-    hits: list[SearchHit] = []
+    scored: list[tuple[float, SearchHit]] = []
     for row in rows:
         vector = np.array(json.loads(row["vector_json"]), dtype=np.float32)
         aligned_query, aligned_vector = _align_vectors(query_vector, vector)
         score = float(np.dot(aligned_query, aligned_vector))
-        hits.append(
-            SearchHit(
-                report_id=int(row["report_id"]),
-                chunk_id=int(row["chunk_id"]),
-                score=round(score, 4),
-                text=str(row["text"]),
-                patient_name=str(row["patient_name"] or ""),
-                report_date=str(row["report_date"] or ""),
-                lab_name=str(row["lab_name"] or ""),
-            )
+        hit = SearchHit(
+            report_id=int(row["report_id"]),
+            chunk_id=int(row["chunk_id"]),
+            score=round(score, 4),
+            text=str(row["text"]),
+            patient_name=str(row["patient_name"] or ""),
+            report_date=str(row["report_date"] or ""),
+            lab_name=str(row["lab_name"] or ""),
         )
-    hits.sort(key=lambda hit: hit.score, reverse=True)
-    return hits[:safe_limit]
+        scored.append((score, hit))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return _diversify_hits(scored, safe_limit)
+
+
+def _diversify_hits(scored: list[tuple[float, "SearchHit"]], limit: int) -> list["SearchHit"]:
+    """Pick top hits while spreading results across reports.
+
+    Plain top-k retrieval lets a single report's chunks crowd out evidence from
+    other reports, which hurts answers that need to compare or pull the most
+    relevant report. This keeps the strongest chunk from each report first, then
+    backfills the remaining slots from the global ranking. No keywords or
+    patterns involved, purely score and report-id structure.
+    """
+    if not scored:
+        return []
+    selected: list[SearchHit] = []
+    used_chunks: set[int] = set()
+    seen_reports: set[int] = set()
+    # First pass: best chunk per report, in score order.
+    for _, hit in scored:
+        if len(selected) >= limit:
+            break
+        if hit.report_id in seen_reports:
+            continue
+        seen_reports.add(hit.report_id)
+        selected.append(hit)
+        used_chunks.add(hit.chunk_id)
+    # Second pass: fill remaining slots with the next strongest chunks.
+    if len(selected) < limit:
+        for _, hit in scored:
+            if len(selected) >= limit:
+                break
+            if hit.chunk_id in used_chunks:
+                continue
+            selected.append(hit)
+            used_chunks.add(hit.chunk_id)
+    return selected[:limit]
 
 
 def answer_question(query: str, limit: int | None = None, settings: AgentSettings | None = None) -> str:
@@ -555,6 +642,8 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
     date = str(payload.get("report_date") or "").strip()
     lab = str(payload.get("lab_name") or "").strip()
     status = str(payload.get("report_status") or "").strip()
+    modality = str(payload.get("modality") or "").strip()
+    body_region = str(payload.get("body_region") or "").strip()
     header_parts = []
     if patient:
         header_parts.append(f"patient {patient}")
@@ -564,8 +653,16 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
         header_parts.append(f"lab {lab}")
     if status:
         header_parts.append(f"report status {status}")
+    if modality:
+        header_parts.append(f"imaging modality {modality}")
+    if body_region:
+        header_parts.append(f"body region {body_region}")
     if header_parts:
         chunks.append("; ".join(header_parts))
+
+    summary = str(payload.get("summary") or "").strip()
+    if summary:
+        chunks.append(f"report summary; {summary}")
 
     biomarkers = payload.get("biomarkers") or {}
     if isinstance(biomarkers, dict):
@@ -584,6 +681,24 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
                 if str(value.get("flag")).upper() not in {"NORMAL", "PENDING"}:
                     parts.append("status abnormal")
             chunks.append("; ".join(parts))
+
+    findings = payload.get("findings") or []
+    if isinstance(findings, list):
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            parts = []
+            title = str(finding.get("title") or "").strip()
+            detail = str(finding.get("detail") or "").strip()
+            severity = str(finding.get("severity") or "").strip()
+            if title:
+                parts.append(f"finding {title}")
+            if detail:
+                parts.append(f"detail {detail}")
+            if severity:
+                parts.append(f"severity {severity}")
+            if parts:
+                chunks.append("; ".join(parts))
 
     document_text = str(payload.get("document_text") or "").strip()
     for index, chunk in enumerate(text_chunks(document_text), start=1):
@@ -654,6 +769,24 @@ def _sync_supabase_share(link: dict[str, Any], settings: AgentSettings) -> None:
         from .supabase_sync import sync_share_link_async
 
         sync_share_link_async(link, settings)
+    except Exception:
+        return
+
+
+def _delete_supabase_reports(report_ids: list[int], settings: AgentSettings) -> None:
+    try:
+        from .supabase_sync import delete_reports
+
+        delete_reports(report_ids, settings)
+    except Exception:
+        return
+
+
+def _sync_supabase_findings(user_id: str, settings: AgentSettings) -> None:
+    try:
+        from .supabase_sync import sync_findings_for_user
+
+        sync_findings_for_user(user_id, settings)
     except Exception:
         return
 
@@ -833,6 +966,7 @@ def _refresh_anomaly_findings(
     ).fetchall()
     history = [dict(row) for row in rows]
     findings = compute_anomaly_findings(history, policy_from_settings(settings))
+    findings.extend(_image_findings_for_user(connection, user_id))
     connection.execute("DELETE FROM anomaly_findings WHERE user_id = ?", (user_id,))
     now = datetime.now().isoformat(timespec="seconds")
     for finding in findings:
@@ -855,6 +989,77 @@ def _refresh_anomaly_findings(
                 now,
             ),
         )
+    return findings
+
+
+def _image_findings_for_user(connection: sqlite3.Connection, user_id: str) -> list[dict[str, Any]]:
+    """Turn radiology/image-report findings into dashboard anomaly findings.
+
+    Image reports carry qualitative findings (title, detail, severity) instead
+    of numeric biomarkers. Without this they never reach the dashboard, the
+    Active Findings list, or the health score. Each image finding becomes a
+    finding so image reports are first-class citizens alongside lab reports.
+    """
+    rows = connection.execute(
+        "SELECT id, report_json, report_date, report_status FROM reports WHERE user_id = ? ORDER BY id ASC",
+        (user_id,),
+    ).fetchall()
+    findings: list[dict[str, Any]] = []
+    for row in rows:
+        payload = _json_value(row["report_json"], {})
+        if not isinstance(payload, dict):
+            continue
+        image_findings = payload.get("findings")
+        if not isinstance(image_findings, list) or not image_findings:
+            continue
+        modality = str(payload.get("modality") or "").strip()
+        body_region = str(payload.get("body_region") or "").strip()
+        # A successful image extraction sets at least a modality or body region.
+        # When both are absent the extractor only produced a status placeholder
+        # (failed/empty extraction), so its "findings" are operational notes, not
+        # clinical findings. Skip the whole report in that case.
+        if not modality and not body_region:
+            continue
+        report_date = str(row["report_date"] or payload.get("report_date") or "")
+        for item in image_findings:
+            if not isinstance(item, dict):
+                continue
+            # Skip extractor status placeholders (failed/empty extraction);
+            # they are operational notes, not real clinical findings.
+            if item.get("system_note"):
+                continue
+            title = str(item.get("title") or "").strip()
+            detail = str(item.get("detail") or "").strip()
+            severity = str(item.get("severity") or "watch").strip().lower()
+            if severity not in {"watch", "concern", "urgent"}:
+                severity = "watch"
+            if not title and not detail:
+                continue
+            label = title or "Imaging finding"
+            descriptor = detail or title
+            context_bits = [bit for bit in (modality, body_region) if bit]
+            context = f" ({', '.join(context_bits)})" if context_bits else ""
+            findings.append(
+                {
+                    "biomarker": label,
+                    "finding_type": "image_finding",
+                    "severity": severity,
+                    "description": f"{descriptor}{context}".strip(),
+                    "data_points": [
+                        {
+                            "report_id": int(row["id"]),
+                            "report_date": report_date,
+                            "modality": modality,
+                            "body_region": body_region,
+                        }
+                    ],
+                    "metrics": {
+                        "modality": modality,
+                        "body_region": body_region,
+                        "source": "image",
+                    },
+                }
+            )
     return findings
 
 
@@ -934,12 +1139,43 @@ def _is_expired(value: str) -> bool:
 
 
 def _report_fingerprint(payload: dict[str, Any]) -> str:
+    status = str(payload.get("report_status") or "").casefold().strip()
+    biomarkers = payload.get("biomarkers") or {}
+    is_image = status in {"image", "scan"} or (not biomarkers and payload.get("findings"))
+    if is_image:
+        # Image reports carry qualitative findings instead of biomarkers, and
+        # their patient_name is often just the uploaded file name. Fingerprint
+        # on the actual clinical content (modality, region, findings) so the
+        # same scan re-uploaded under a different file name is still caught as a
+        # duplicate.
+        findings = payload.get("findings") or []
+        normalized_findings = []
+        if isinstance(findings, list):
+            for item in findings:
+                if not isinstance(item, dict):
+                    continue
+                normalized_findings.append(
+                    {
+                        "title": str(item.get("title") or "").casefold().strip(),
+                        "detail": str(item.get("detail") or "").casefold().strip(),
+                        "severity": str(item.get("severity") or "").casefold().strip(),
+                    }
+                )
+        normalized_findings.sort(key=lambda entry: (entry["title"], entry["detail"]))
+        normalized = {
+            "kind": "image",
+            "modality": str(payload.get("modality") or "").casefold().strip(),
+            "body_region": str(payload.get("body_region") or "").casefold().strip(),
+            "summary": str(payload.get("summary") or "").casefold().strip(),
+            "findings": normalized_findings,
+        }
+        return json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     normalized = {
         "patient_name": str(payload.get("patient_name") or "").casefold().strip(),
         "report_date": str(payload.get("report_date") or "").casefold().strip(),
         "lab_name": str(payload.get("lab_name") or "").casefold().strip(),
-        "report_status": str(payload.get("report_status") or "").casefold().strip(),
-        "biomarkers": payload.get("biomarkers") or {},
+        "report_status": status,
+        "biomarkers": biomarkers,
     }
     return json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 

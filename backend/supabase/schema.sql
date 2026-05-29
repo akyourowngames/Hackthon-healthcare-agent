@@ -83,20 +83,25 @@ create policy "Users can read own profiles" on public.profiles
 create policy "Users can update own profiles" on public.profiles
   for update using (auth.uid() = id);
 
-create policy "Users can read own reports" on public.reports
-  for select using (auth.uid()::text = user_id);
+create policy "auth_can_read_own_reports" on public.reports
+  for select to authenticated
+  using ((auth.uid())::text = user_id);
 
-create policy "Users can read own biomarker history" on public.biomarker_history
-  for select using (auth.uid()::text = user_id);
+create policy "auth_can_read_own_biomarkers" on public.biomarker_history
+  for select to authenticated
+  using ((auth.uid())::text = user_id);
 
-create policy "Users can read own anomaly findings" on public.anomaly_findings
-  for select using (auth.uid()::text = user_id);
+create policy "auth_can_read_own_anomalies" on public.anomaly_findings
+  for select to authenticated
+  using ((auth.uid())::text = user_id);
 
-create policy "Users can read own share links" on public.share_links
-  for select using (auth.uid()::text = user_id);
+create policy "auth_can_read_own_shares" on public.share_links
+  for select to authenticated
+  using ((auth.uid())::text = user_id);
 
-create policy "Users can read own notifications" on public.notification_outbox
-  for select using (auth.uid()::text = user_id);
+create policy "auth_can_read_own_notifications" on public.notification_outbox
+  for select to authenticated
+  using ((auth.uid())::text = user_id);
 
 
 -- Auto-create profile on user signup

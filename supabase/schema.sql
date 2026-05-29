@@ -69,14 +69,87 @@ alter table public.notification_outbox enable row level security;
 create policy "Users can read own reports" on public.reports
   for select using (auth.uid()::text = user_id);
 
+create policy "Users can insert own reports" on public.reports
+  for insert with check (auth.uid()::text = user_id);
+
+create policy "Users can update own reports" on public.reports
+  for update using (auth.uid()::text = user_id);
+
+create policy "Users can delete own reports" on public.reports
+  for delete using (auth.uid()::text = user_id);
+
 create policy "Users can read own biomarker history" on public.biomarker_history
   for select using (auth.uid()::text = user_id);
+
+create policy "Users can insert own biomarker history" on public.biomarker_history
+  for insert with check (auth.uid()::text = user_id);
+
+create policy "Users can update own biomarker history" on public.biomarker_history
+  for update using (auth.uid()::text = user_id);
+
+create policy "Users can delete own biomarker history" on public.biomarker_history
+  for delete using (auth.uid()::text = user_id);
 
 create policy "Users can read own anomaly findings" on public.anomaly_findings
   for select using (auth.uid()::text = user_id);
 
+create policy "Users can insert own anomaly findings" on public.anomaly_findings
+  for insert with check (auth.uid()::text = user_id);
+
+create policy "Users can update own anomaly findings" on public.anomaly_findings
+  for update using (auth.uid()::text = user_id);
+
+create policy "Users can delete own anomaly findings" on public.anomaly_findings
+  for delete using (auth.uid()::text = user_id);
+
 create policy "Users can read own share links" on public.share_links
   for select using (auth.uid()::text = user_id);
 
+create policy "Users can insert own share links" on public.share_links
+  for insert with check (auth.uid()::text = user_id);
+
+create policy "Users can update own share links" on public.share_links
+  for update using (auth.uid()::text = user_id);
+
+create policy "Users can delete own share links" on public.share_links
+  for delete using (auth.uid()::text = user_id);
+
 create policy "Users can read own notifications" on public.notification_outbox
   for select using (auth.uid()::text = user_id);
+
+create policy "Users can insert own notifications" on public.notification_outbox
+  for insert with check (auth.uid()::text = user_id);
+
+create policy "Users can update own notifications" on public.notification_outbox
+  for update using (auth.uid()::text = user_id);
+
+create policy "Users can delete own notifications" on public.notification_outbox
+  for delete using (auth.uid()::text = user_id);
+
+insert into storage.buckets (id, name, public)
+values ('User Data', 'User Data', false)
+on conflict (id) do nothing;
+
+create policy "Users can read own uploaded files" on storage.objects
+  for select using (
+    bucket_id = 'User Data'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+create policy "Users can upload own files" on storage.objects
+  for insert with check (
+    bucket_id = 'User Data'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+create policy "Users can update own files" on storage.objects
+  for update using (
+    bucket_id = 'User Data'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+create policy "Users can delete own files" on storage.objects
+  for delete using (
+    bucket_id = 'User Data'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );

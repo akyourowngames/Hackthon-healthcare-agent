@@ -127,14 +127,23 @@ when enabled. Apply `supabase/schema.sql` in Supabase SQL editor, then set:
 VAIDY_SUPABASE_ENABLED=true
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+VAIDY_SUPABASE_STORAGE_BUCKET=User Data
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET=User Data
 ```
 
 The service role key is for the backend only. The frontend uses the public anon
 key for email/password and Google auth. When Supabase is not configured, the app
 uses the `local-user` identity from `healthcare_agent/agent_policy.md` so CLI
 and web still share the same reports.
+
+Uploads from the web app pass the signed-in Supabase access token to the API so
+analyzed report rows, biomarker history, anomaly findings, notifications, and
+the original file can sync under that user's account. If you do not pass a user
+token, configure a real service-role key; an anon key in `SUPABASE_SERVICE_ROLE_KEY`
+can upload files only where storage policy allows it and cannot upsert analyzed
+tables by itself.
 
 For email notifications, deploy
 `supabase/functions/send-report-notification` and set `RESEND_API_KEY`,

@@ -239,6 +239,10 @@ def get_report(report_id: int, settings: AgentSettings | None = None) -> dict[st
 
 
 def source_exists(source_path: str | Path, settings: AgentSettings | None = None, user_id: str | None = None) -> bool:
+    return find_report_id_by_source(source_path, settings, user_id) is not None
+
+
+def find_report_id_by_source(source_path: str | Path, settings: AgentSettings | None = None, user_id: str | None = None) -> int | None:
     active_settings = settings or load_agent_settings()
     safe_user_id = _safe_user_id(user_id, active_settings)
     initialize_database(active_settings)
@@ -248,7 +252,7 @@ def source_exists(source_path: str | Path, settings: AgentSettings | None = None
             "SELECT id FROM reports WHERE source_path = ? AND user_id = ? LIMIT 1",
             (source, safe_user_id),
         ).fetchone()
-    return row is not None
+    return int(row["id"]) if row is not None else None
 
 
 def search_reports(query: str, limit: int | None = None, settings: AgentSettings | None = None) -> list[SearchHit]:
@@ -551,6 +555,9 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
     date = str(payload.get("report_date") or "").strip()
     lab = str(payload.get("lab_name") or "").strip()
     status = str(payload.get("report_status") or "").strip()
+    summary = str(payload.get("summary") or "").strip()
+    modality = str(payload.get("modality") or "").strip()
+    body_region = str(payload.get("body_region") or "").strip()
     header_parts = []
     if patient:
         header_parts.append(f"patient {patient}")
@@ -560,8 +567,14 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
         header_parts.append(f"lab {lab}")
     if status:
         header_parts.append(f"report status {status}")
+    if modality:
+        header_parts.append(f"modality {modality}")
+    if body_region:
+        header_parts.append(f"body region {body_region}")
     if header_parts:
         chunks.append("; ".join(header_parts))
+    if summary:
+        chunks.append(f"summary {summary}")
 
     biomarkers = payload.get("biomarkers") or {}
     if isinstance(biomarkers, dict):
@@ -579,6 +592,18 @@ def report_chunks(payload: dict[str, Any]) -> list[str]:
                 parts.append(f"flag {value.get('flag')}")
                 if str(value.get("flag")).upper() not in {"NORMAL", "PENDING"}:
                     parts.append("status abnormal")
+            chunks.append("; ".join(parts))
+
+    findings = payload.get("findings") or []
+    if isinstance(findings, list):
+        for index, finding in enumerate(findings, start=1):
+            if not isinstance(finding, dict):
+                continue
+            parts = [f"image finding {index}"]
+            for field in ("title", "description", "location", "severity", "impression", "recommendation"):
+                value = str(finding.get(field) or "").strip()
+                if value:
+                    parts.append(f"{field} {value}")
             chunks.append("; ".join(parts))
 
     document_text = str(payload.get("document_text") or "").strip()

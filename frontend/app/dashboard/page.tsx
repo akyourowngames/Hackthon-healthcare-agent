@@ -12,6 +12,8 @@ import {
   listUserFiles,
   deleteReport,
   SupabaseReport,
+  SupabaseBiomarker,
+  SupabaseAnomaly,
 } from "@/lib/supabase-data";
 import {
   AnomalyFinding,
@@ -19,7 +21,6 @@ import {
   DashboardPayload,
   ShareLinkPayload,
   createShareLink,
-  getDashboard,
   getVaidyStatus,
   streamUploadProgress,
   uploadReportWithProgress,
@@ -27,14 +28,120 @@ import {
 } from "@/lib/vaidy-api";
 
 type Tab = "overview" | "reports" | "biomarkers" | "settings";
+type DashboardSource = "supabase" | "api" | "syncing";
+
+function isAbnormalFlag(flag: string) {
+  const normalized = String(flag || "").trim().toUpperCase();
+  return Boolean(normalized && normalized !== "NORMAL" && normalized !== "N" && normalized !== "PENDING");
+}
+
+function rowFromSupabaseBiomarker(b: {
+  id: number;
+  user_id: string;
+  local_report_id: number;
+  biomarker_name: string;
+  value: number | null;
+  unit: string;
+  flag: string;
+  ref_range: string;
+  report_date: string;
+  lab_name: string;
+  created_at: string;
+}): BiomarkerHistoryRow {
+  return {
+    id: b.id,
+    user_id: b.user_id,
+    report_id: b.local_report_id,
+    biomarker_name: b.biomarker_name,
+    value: b.value,
+    unit: b.unit,
+    flag: b.flag,
+    ref_range: b.ref_range,
+    report_date: b.report_date,
+    lab_name: b.lab_name,
+    created_at: b.created_at,
+  };
+}
+
+function buildSupabaseDashboard(
+  userId: string,
+  reports: SupabaseReport[],
+  biomarkers: SupabaseBiomarker[],
+  anomalies: SupabaseAnomaly[],
+): DashboardPayload {
+  const history = biomarkers.map(rowFromSupabaseBiomarker);
+  history.sort((a, b) => {
+    const reportDelta = Number(a.report_id || 0) - Number(b.report_id || 0);
+    if (reportDelta) return reportDelta;
+    return Number(a.id || 0) - Number(b.id || 0);
+  });
+  const grouped = new Map<string, { latest: BiomarkerHistoryRow; history: BiomarkerHistoryRow[]; points: number }>();
+  for (const row of history) {
+    const name = row.biomarker_name || "Unknown";
+    const existing = grouped.get(name);
+    if (existing) {
+      existing.history.push(row);
+      existing.latest = row;
+      existing.points = existing.history.length;
+    } else {
+      grouped.set(name, { latest: row, history: [row], points: 1 });
+    }
+  }
+  const biomarkerList = Array.from(grouped.entries()).map(([name, data]) => ({ name, ...data }));
+  const abnormalLatest = biomarkerList.filter((item) => isAbnormalFlag(item.latest.flag)).length;
+  const anomalyList: AnomalyFinding[] = anomalies.map((a) => ({
+    id: a.id,
+    user_id: a.user_id,
+    biomarker: a.biomarker,
+    finding_type: a.finding_type,
+    severity: a.severity as "watch" | "concern" | "urgent",
+    description: a.description,
+    data_points: a.data_points as Array<Record<string, unknown>>,
+    metrics: a.metrics,
+    detected_at: a.detected_at,
+  }));
+  const score = Math.max(0, 100 - (abnormalLatest * 5) - (anomalyList.length * 3));
+  return {
+    user_id: userId,
+    health_score: {
+      score,
+      latest_biomarkers: biomarkerList.length,
+      abnormal_latest: abnormalLatest,
+      finding_count: anomalyList.length,
+    },
+    anomalies: anomalyList,
+    biomarkers: biomarkerList,
+    history,
+    reports: reports.map((r) => ({
+      id: r.id,
+      local_report_id: r.local_report_id,
+      user_id: r.user_id,
+      patient_name: r.patient_name,
+      report_date: r.report_date,
+      lab_name: r.lab_name,
+      report_status: r.report_status,
+      biomarker_count: r.biomarker_count,
+      source_path: r.source_path,
+      created_at: r.created_at,
+      analyzed: r.biomarker_count > 0,
+    })),
+  };
+}
+
+function sourceLabel(source: DashboardSource) {
+  if (source === "supabase") return "Supabase live";
+  if (source === "syncing") return "Analysis sync";
+  return "API mirror";
+}
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, loading, userId, signOut } = useAuth();
+  const { user, session, isAuthenticated, loading, userId, signOut } = useAuth();
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [refreshing, setRefreshing] = useState(false);
+  const [source, setSource] = useState<DashboardSource>("api");
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -45,117 +152,29 @@ export default function DashboardPage() {
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Try Supabase direct fetch first if configured and authenticated
-      if (isSupabaseConfigured && userId !== "local-user") {
-        const [reports, biomarkers, anomalies] = await Promise.all([
-          fetchUserReports(userId),
-          fetchUserBiomarkers(userId),
-          fetchUserAnomalies(userId),
-        ]);
-
-        // Build dashboard payload from Supabase data
-        const abnormalLatest = biomarkers.filter(
-          (b) => b.flag && b.flag !== "normal" && b.flag !== "N" && b.flag !== ""
-        ).length;
-        const uniqueBiomarkers = new Map<string, { latest: BiomarkerHistoryRow; history: BiomarkerHistoryRow[]; points: number }>();
-        for (const b of biomarkers) {
-          const row: BiomarkerHistoryRow = {
-            id: b.id,
-            user_id: b.user_id,
-            report_id: b.local_report_id,
-            biomarker_name: b.biomarker_name,
-            value: b.value,
-            unit: b.unit,
-            flag: b.flag,
-            ref_range: b.ref_range,
-            report_date: b.report_date,
-            lab_name: b.lab_name,
-            created_at: b.created_at,
-          };
-          const existing = uniqueBiomarkers.get(b.biomarker_name);
-          if (existing) {
-            existing.history.push(row);
-            existing.latest = row;
-            existing.points = existing.history.length;
-          } else {
-            uniqueBiomarkers.set(b.biomarker_name, { latest: row, history: [row], points: 1 });
-          }
-        }
-
-        const biomarkerList = Array.from(uniqueBiomarkers.entries()).map(([name, data]) => ({
-          name,
-          latest: data.latest,
-          history: data.history,
-          points: data.points,
-        }));
-
-        const anomalyList: AnomalyFinding[] = anomalies.map((a) => ({
-          id: a.id,
-          user_id: a.user_id,
-          biomarker: a.biomarker,
-          finding_type: a.finding_type,
-          severity: a.severity as "watch" | "concern" | "urgent",
-          description: a.description,
-          data_points: a.data_points as Array<Record<string, unknown>>,
-          metrics: a.metrics,
-          detected_at: a.detected_at,
-        }));
-
-        const score = Math.max(0, 100 - (abnormalLatest * 5) - (anomalyList.length * 3));
-
-        const payload: DashboardPayload = {
-          user_id: userId,
-          health_score: {
-            score,
-            latest_biomarkers: biomarkerList.length,
-            abnormal_latest: abnormalLatest,
-            finding_count: anomalyList.length,
-          },
-          anomalies: anomalyList,
-          biomarkers: biomarkerList,
-          history: biomarkers.map((b) => ({
-            id: b.id,
-            user_id: b.user_id,
-            report_id: b.local_report_id,
-            biomarker_name: b.biomarker_name,
-            value: b.value,
-            unit: b.unit,
-            flag: b.flag,
-            ref_range: b.ref_range,
-            report_date: b.report_date,
-            lab_name: b.lab_name,
-            created_at: b.created_at,
-          })),
-          reports: reports.map((r) => ({
-            id: r.id,
-            local_report_id: r.local_report_id,
-            user_id: r.user_id,
-            patient_name: r.patient_name,
-            report_date: r.report_date,
-            lab_name: r.lab_name,
-            report_status: r.report_status,
-            biomarker_count: r.biomarker_count,
-            source_path: r.source_path,
-            created_at: r.created_at,
-          })),
-        };
-        setDashboard(payload);
-        setError("");
-      } else {
-        // Fallback to local API
-        const payload = await getDashboard(userId);
-        setDashboard(payload);
-        setError("");
+      if (!isSupabaseConfigured) {
+        setError("Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+        setSource("supabase");
+        return;
       }
+      if (userId === "local-user") {
+        setError("Sign in to load your cloud health data.");
+        setSource("supabase");
+        return;
+      }
+      // Cloud-first: all reports, biomarkers, and findings come from Supabase.
+      const [reports, biomarkers, anomalies] = await Promise.all([
+        fetchUserReports(userId),
+        fetchUserBiomarkers(userId),
+        fetchUserAnomalies(userId),
+      ]);
+      const payload = buildSupabaseDashboard(userId, reports, biomarkers, anomalies);
+      setDashboard(payload);
+      setSource("supabase");
+      setError("");
     } catch (err) {
-      // If Supabase fails, try local API as fallback
-      try {
-        const payload = await getDashboard(userId);
-        setDashboard(payload);
-        setError("");
-      } catch (fallbackErr) {
-        setError(fallbackErr instanceof Error ? fallbackErr.message : "Dashboard unavailable");
-      }
+      setError(err instanceof Error ? err.message : "Could not load cloud dashboard data.");
+      setSource("supabase");
     } finally {
       setRefreshing(false);
     }
@@ -244,15 +263,20 @@ export default function DashboardPage() {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-        {error && (
-          <div className="mb-6 rounded-xl border border-red-400/20 bg-red-400/[0.06] px-4 py-3 text-sm text-red-200">
-            {error}
-            <button onClick={refresh} className="ml-3 font-bold text-red-300 hover:text-white">Retry</button>
+        {(error || source) && (
+          <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+            error
+              ? "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
+              : "border-[#00d97e]/20 bg-[#00d97e]/[0.06] text-[#bfffe1]"
+          }`}>
+            <span className="font-bold">{sourceLabel(source)}</span>
+            <span className="ml-2">{error || "Dashboard data is current."}</span>
+            {error && <button onClick={refresh} className="ml-3 font-bold text-amber-200 hover:text-white">Retry</button>}
           </div>
         )}
 
         {activeTab === "overview" && <OverviewTab dashboard={dashboard} userId={userId} onRefresh={refresh} refreshing={refreshing} />}
-        {activeTab === "reports" && <ReportsTab dashboard={dashboard} userId={userId} onRefresh={refresh} />}
+        {activeTab === "reports" && <ReportsTab dashboard={dashboard} userId={userId} accessToken={session?.access_token} onRefresh={refresh} />}
         {activeTab === "biomarkers" && <BiomarkersTab dashboard={dashboard} />}
         {activeTab === "settings" && <SettingsTab user={user} userId={userId} />}
       </div>
@@ -275,6 +299,8 @@ function OverviewTab({
   const score = dashboard?.health_score;
   const anomalies = dashboard?.anomalies || [];
   const topBiomarkers = (dashboard?.biomarkers || []).slice(0, 4);
+  const imagingFindings = anomalies.filter((a) => a.finding_type === "image_finding");
+  const labFindings = anomalies.filter((a) => a.finding_type !== "image_finding");
 
   return (
     <div className="space-y-6">
@@ -309,13 +335,28 @@ function OverviewTab({
       {/* Upload zone */}
       <UploadZone userId={userId} onDone={onRefresh} />
 
-      {/* Anomalies */}
-      {anomalies.length > 0 && (
+      {/* Lab anomalies */}
+      {labFindings.length > 0 && (
         <section>
           <h2 className="mb-4 text-lg font-bold">Anomaly Alerts</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {anomalies.slice(0, 6).map((finding) => (
+            {labFindings.slice(0, 6).map((finding) => (
               <AnomalyCard key={`${finding.id}-${finding.biomarker}`} finding={finding} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Imaging findings (from scans, X-rays, etc.) */}
+      {imagingFindings.length > 0 && (
+        <section>
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-bold">
+            <span>Imaging Findings</span>
+            <span className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[10px] font-medium text-white/40">{imagingFindings.length}</span>
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {imagingFindings.map((finding) => (
+              <ImagingFindingCard key={`${finding.id}-${finding.biomarker}`} finding={finding} />
             ))}
           </div>
         </section>
@@ -332,6 +373,15 @@ function OverviewTab({
           </div>
         </section>
       )}
+
+      {/* Empty state when nothing analyzed yet */}
+      {anomalies.length === 0 && topBiomarkers.length === 0 && (dashboard?.reports.length ?? 0) === 0 && (
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
+          <p className="text-4xl">🩺</p>
+          <p className="mt-4 text-lg font-bold text-white/60">No analyzed data yet</p>
+          <p className="mt-2 text-sm text-white/35">Upload a blood report, prescription, or scan to get started.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -341,9 +391,11 @@ function ReportsTab({
   dashboard,
   userId,
   onRefresh,
+  accessToken,
 }: {
   dashboard: DashboardPayload | null;
   userId: string;
+  accessToken?: string;
   onRefresh: () => void;
 }) {
   const reports = dashboard?.reports || [];
@@ -371,7 +423,7 @@ function ReportsTab({
         <span className="text-sm text-white/40">{reports.length} total</span>
       </div>
 
-      <UploadZone userId={userId} onDone={onRefresh} />
+      <UploadZone userId={userId} accessToken={accessToken} onDone={onRefresh} />
 
       {reports.length === 0 ? (
         <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
@@ -419,7 +471,14 @@ function ReportRow({ report, onDelete }: { report: Record<string, unknown>; onDe
   const date = String(report.report_date || "No date");
   const lab = String(report.lab_name || "Unknown lab");
   const biomarkers = Number(report.biomarker_count || 0);
-  const id = Number(report.id || report.local_report_id || 0);
+  const id = Number(report.local_report_id || report.id || 0);
+  const reportStatus = String(report.report_status || "").toLowerCase();
+  // Image reports are fully analyzed even with 0 biomarkers (they have findings instead).
+  const isImageReport = reportStatus === "image" || reportStatus === "scan";
+  const analyzed = biomarkers > 0 || isImageReport || Boolean(report.analyzed);
+  const detail = isImageReport
+    ? `${date} · ${lab} · image findings`
+    : `${date} · ${lab} · ${biomarkers} biomarkers`;
 
   return (
     <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition hover:border-white/[0.12]">
@@ -428,9 +487,16 @@ function ReportRow({ report, onDelete }: { report: Record<string, unknown>; onDe
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold">{name}</p>
-        <p className="mt-0.5 text-xs text-white/40">{date} · {lab} · {biomarkers} biomarkers</p>
+        <p className="mt-0.5 text-xs text-white/40">{detail}</p>
       </div>
       <div className="flex items-center gap-2">
+        <span className={`hidden rounded-lg border px-2.5 py-1.5 text-[11px] font-bold sm:inline-flex ${
+          analyzed
+            ? "border-[#00d97e]/20 bg-[#00d97e]/[0.06] text-[#00d97e]"
+            : "border-amber-300/20 bg-amber-300/[0.06] text-amber-200"
+        }`}>
+          {analyzed ? "Analyzed" : "Syncing"}
+        </span>
         <Link
           href={`/chat?ask=${encodeURIComponent(`Explain report #${id} in simple terms`)}`}
           className="shrink-0 rounded-lg border border-white/[0.08] px-3 py-1.5 text-[11px] font-bold text-white/50 transition hover:border-[#00d97e]/30 hover:text-[#00d97e]"
@@ -589,6 +655,50 @@ function AnomalyCard({ finding }: { finding: AnomalyFinding }) {
   );
 }
 
+function ImagingFindingCard({ finding }: { finding: AnomalyFinding }) {
+  const severityColors: Record<string, string> = {
+    urgent: "border-red-400/25 bg-red-400/[0.05]",
+    concern: "border-amber-400/25 bg-amber-400/[0.05]",
+    watch: "border-sky-400/20 bg-sky-400/[0.04]",
+  };
+  const severityTextColors: Record<string, string> = {
+    urgent: "text-red-300",
+    concern: "text-amber-300",
+    watch: "text-sky-300",
+  };
+  const cls = severityColors[finding.severity] || severityColors.watch;
+  const textCls = severityTextColors[finding.severity] || severityTextColors.watch;
+  const modality = String((finding.metrics as Record<string, unknown>)?.modality || "").trim();
+  const bodyRegion = String((finding.metrics as Record<string, unknown>)?.body_region || "").trim();
+  const tags = [modality, bodyRegion].filter(Boolean);
+
+  return (
+    <article className={`rounded-xl border p-4 ${cls}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-sm">🩻</span>
+        <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${textCls}`}>
+          {finding.severity}
+        </span>
+      </div>
+      <h3 className="mt-2 text-sm font-bold">{finding.biomarker}</h3>
+      <p className="mt-1.5 text-xs leading-5 text-white/55">{finding.description}</p>
+      {tags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span key={tag} className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[10px] capitalize text-white/45">{tag}</span>
+          ))}
+        </div>
+      )}
+      <Link
+        href={`/chat?ask=${encodeURIComponent(`Explain this imaging finding: ${finding.biomarker} — ${finding.description}`)}`}
+        className="mt-3 inline-flex text-[11px] font-bold text-[#00d97e] hover:underline"
+      >
+        Ask Vaidy →
+      </Link>
+    </article>
+  );
+}
+
 function BiomarkerCard({
   name,
   latest,
@@ -651,39 +761,47 @@ function MiniChart({ rows }: { rows: Array<{ value: number | null; flag: string 
   );
 }
 
-function UploadZone({ userId, onDone }: { userId: string; onDone: () => void }) {
-  const [uploading, setUploading] = useState(false);
+function UploadZone({ userId, accessToken, onDone }: { userId: string; accessToken?: string; onDone: () => void }) {
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadMsg, setUploadMsg] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleFile = async (file: File | null) => {
-    if (!file) return;
-    setUploading(true);
-    setUploadMsg(`Uploading ${file.name}...`);
+  const processOneFile = useCallback(async (file: File) => {
     try {
-      const started = await uploadReportWithProgress(file, { userId });
+      const started = await uploadReportWithProgress(file, { userId, supabaseAccessToken: accessToken });
       await streamUploadProgress(started.job_id, {
-        onStatus: (p: UploadStatusPayload) => setUploadMsg(String(p.message || p.stage || "Processing...")),
-        onDone: () => { setUploadMsg("Done! Report analyzed."); onDone(); },
-        onError: (msg) => setUploadMsg(`Error: ${msg}`),
+        onStatus: (p: UploadStatusPayload) => setUploadMsg(`${file.name}: ${String(p.message || p.stage || "Processing...")}`),
+        onDone: () => { setUploadMsg(`${file.name}: Done`); onDone(); },
+        onError: (msg) => setUploadMsg(`${file.name}: ${msg}`),
       });
     } catch (err) {
-      setUploadMsg(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
+      setUploadMsg(`${file.name}: ${err instanceof Error ? err.message : "Upload failed"}`);
     }
-  };
+  }, [userId, accessToken, onDone]);
+
+  const handleFiles = useCallback(async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    setUploadingCount((c) => c + files.length);
+    setUploadMsg(`Processing ${files.length} file${files.length === 1 ? "" : "s"} in parallel...`);
+    // Run all uploads in parallel — each one streams its own progress
+    await Promise.all(files.map((file) => processOneFile(file)));
+    setUploadingCount((c) => Math.max(0, c - files.length));
+    onDone();
+  }, [processOneFile, onDone]);
 
   const onInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    handleFile(e.target.files?.[0] || null);
+    handleFiles(e.target.files);
     e.target.value = "";
   };
 
   const onDrop = (e: DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    handleFile(e.dataTransfer.files?.[0] || null);
+    handleFiles(e.dataTransfer.files);
   };
+
+  const uploading = uploadingCount > 0;
 
   return (
     <label
@@ -696,12 +814,12 @@ function UploadZone({ userId, onDone }: { userId: string; onDone: () => void }) 
           : "border-white/[0.08] bg-white/[0.015] hover:border-[#00d97e]/30 hover:bg-white/[0.025]"
       }`}
     >
-      <input className="hidden" type="file" accept=".pdf,.json,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={onInputChange} disabled={uploading} />
+      <input className="hidden" type="file" multiple accept=".pdf,.json,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={onInputChange} disabled={uploading} />
       <div className="mx-auto w-fit rounded-xl bg-[#00d97e]/[0.1] p-3">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[#00d97e]"><path d="M12 16V4m0 0L7 9m5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </div>
       <p className="mt-3 text-sm font-bold text-white/70">
-        {uploading ? "Processing..." : "Drop a report here or click to upload"}
+        {uploading ? `Processing ${uploadingCount} file${uploadingCount === 1 ? "" : "s"}...` : "Drop reports here or click to upload (multi-select supported)"}
       </p>
       <p className="mt-1 text-xs text-white/35">
         {uploadMsg || "PDF, images, JSON — blood reports, prescriptions, scans"}

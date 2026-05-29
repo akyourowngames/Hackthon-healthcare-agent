@@ -44,7 +44,7 @@ from .store import (
     list_reports,
     search_reports,
 )
-from .supabase_sync import supabase_status
+from .supabase_sync import supabase_status, sync_report_bundle, upload_source_file
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,7 @@ class UploadJob:
     session_id: str = ""
     user_id: str = ""
     file_label: str = ""
+    supabase_access_token: str = ""
     events: queue.Queue[dict[str, Any]] = field(default_factory=queue.Queue)
     history: list[dict[str, Any]] = field(default_factory=list)
     done: bool = False
@@ -292,6 +293,7 @@ def create_app() -> FastAPI:
         local_only = _form_bool(form.get("local_only"))
         user_id = str(form.get("user_id") or "").strip()
         session_id = str(form.get("session_id") or "").strip()
+        supabase_access_token = str(form.get("supabase_access_token") or "").strip()
         relative_path = str(form.get("relative_path") or filename).strip() or filename
         target = _upload_target(settings, filename)
         content = await uploaded.read()
@@ -303,6 +305,7 @@ def create_app() -> FastAPI:
             user_id=user_id,
             session_id=session_id,
             file_label=relative_path,
+            supabase_access_token=supabase_access_token,
         )
         return {
             "job_id": job.id,
@@ -487,6 +490,7 @@ def _start_upload_job(
     user_id: str = "",
     session_id: str = "",
     file_label: str = "",
+    supabase_access_token: str = "",
 ) -> UploadJob:
     job = UploadJob(
         id=str(uuid.uuid4()),
@@ -495,6 +499,7 @@ def _start_upload_job(
         session_id=session_id,
         user_id=user_id,
         file_label=file_label or path.name,
+        supabase_access_token=supabase_access_token,
     )
     UPLOAD_JOBS[job.id] = job
     extension = path.suffix.lower()
@@ -534,6 +539,19 @@ def _start_upload_job(
             result["file_label"] = job.file_label
             result["is_image"] = is_image
             report_id = result.get("report_id")
+            if isinstance(report_id, int):
+                result["supabase_file"] = upload_source_file(
+                    path,
+                    user_id or settings.default_user_id,
+                    settings,
+                    label=job.file_label,
+                    access_token=job.supabase_access_token,
+                )
+                result["supabase_sync"] = sync_report_bundle(
+                    int(report_id),
+                    settings,
+                    access_token=job.supabase_access_token,
+                )
             if isinstance(report_id, int) and session_id and settings.memory_enabled:
                 bind_session_to_report(session_id, int(report_id), settings)
                 _store_upload_memory(session_id, result, settings)

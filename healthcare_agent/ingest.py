@@ -12,6 +12,7 @@ from extractor.utils import safe_stem, write_json
 from .config import AgentSettings, load_agent_settings
 from .store import (
     copy_source_to_storage,
+    find_report_id_by_source,
     save_document,
     save_report,
     source_exists,
@@ -81,8 +82,9 @@ def process_single_file(
         raise FileNotFoundError(f"File not found: {resolved}")
     if resolved.suffix.lower() not in active_settings.supported_extensions:
         raise ValueError(f"Unsupported file type: {resolved.suffix}")
-    if source_exists(resolved, active_settings, user_id=user_id):
-        return {"path": str(resolved), "kind": "skipped", "reason": "already_stored"}
+    existing_report_id = find_report_id_by_source(resolved, active_settings, user_id=user_id)
+    if existing_report_id is not None:
+        return {"path": str(resolved), "kind": "existing", "report_id": existing_report_id, "reason": "already_stored"}
     return _process_file(resolved, active_settings, local_only, user_id)
 
 

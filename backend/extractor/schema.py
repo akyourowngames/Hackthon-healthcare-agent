@@ -16,6 +16,9 @@ class ImageFinding(BaseModel):
     title: str
     detail: str | None = None
     severity: Literal["normal", "watch", "concern", "urgent"] | None = None
+    # Marks extractor-generated status placeholders (e.g. extraction failed)
+    # so the dashboard can keep them out of real clinical findings.
+    system_note: bool | None = None
 
 
 class Report(BaseModel):

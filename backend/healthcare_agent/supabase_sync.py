@@ -255,6 +255,75 @@ def _configured(settings: AgentSettings) -> bool:
     return bool(settings.supabase_url.strip() and settings.supabase_service_role_key.strip())
 
 
+def _delete(settings: AgentSettings, table: str, column: str, values: list[Any]) -> None:
+    """Delete rows from a Supabase table where column matches any of the values."""
+    if not values:
+        return
+    base_url = settings.supabase_url.rstrip("/")
+    encoded = ",".join(urllib.parse.quote(str(value), safe="") for value in values)
+    url = f"{base_url}/rest/v1/{table}?{column}=in.({encoded})"
+    request = urllib.request.Request(url, method="DELETE")
+    request.add_header("apikey", settings.supabase_service_role_key)
+    request.add_header("Authorization", f"Bearer {settings.supabase_service_role_key}")
+    request.add_header("Prefer", "return=minimal")
+    with urllib.request.urlopen(request, timeout=settings.supabase_timeout_seconds) as response:
+        if response.status >= 400:
+            raise RuntimeError(f"Supabase {table} delete failed with {response.status}")
+
+
+def delete_reports(report_ids: list[int], settings: AgentSettings | None = None) -> dict[str, Any]:
+    """Remove reports and their dependent rows from Supabase by local report id."""
+    active_settings = settings or load_agent_settings()
+    if not active_settings.supabase_enabled or not _configured(active_settings):
+        return {"synced": False, "reason": "disabled_or_unconfigured"}
+    ids = [int(value) for value in report_ids if int(value) > 0]
+    if not ids:
+        return {"synced": True, "deleted": 0}
+    try:
+        _delete(active_settings, "biomarker_history", "local_report_id", ids)
+        _delete(active_settings, "notification_outbox", "local_report_id", ids)
+        _delete(active_settings, "reports", "local_report_id", ids)
+    except Exception as exc:
+        _write_sync_error(active_settings, 0, exc)
+        return {"synced": False, "reason": str(exc)}
+    return {"synced": True, "deleted": len(ids)}
+
+
+def sync_findings_for_user(user_id: str, settings: AgentSettings | None = None) -> dict[str, Any]:
+    """Replace the user's anomaly findings in Supabase with the current local set."""
+    active_settings = settings or load_agent_settings()
+    if not active_settings.supabase_enabled or not _configured(active_settings):
+        return {"synced": False, "reason": "disabled_or_unconfigured"}
+
+    from .store import list_anomaly_findings
+
+    safe_user_id = str(user_id or active_settings.default_user_id)
+    findings = [
+        {
+            "local_id": int(item.get("id") or 0),
+            "user_id": item.get("user_id") or safe_user_id,
+            "biomarker": item.get("biomarker") or "",
+            "finding_type": item.get("finding_type") or "",
+            "severity": item.get("severity") or "",
+            "description": item.get("description") or "",
+            "data_points": item.get("data_points") or [],
+            "metrics": item.get("metrics") or {},
+            "detected_at": item.get("detected_at") or datetime.now().isoformat(timespec="seconds"),
+        }
+        for item in list_anomaly_findings(safe_user_id, active_settings)
+    ]
+    try:
+        # Clear stale findings for this user, then write the fresh set so deletes
+        # and de-duplications are reflected in the cloud, not just additions.
+        _delete(active_settings, "anomaly_findings", "user_id", [safe_user_id])
+        if findings:
+            _upsert(active_settings, "anomaly_findings", findings, "local_id")
+    except Exception as exc:
+        _write_sync_error(active_settings, 0, exc)
+        return {"synced": False, "reason": str(exc)}
+    return {"synced": True, "findings": len(findings)}
+
+
 def _public_url(value: str) -> str:
     return value.strip().rstrip("/")
 

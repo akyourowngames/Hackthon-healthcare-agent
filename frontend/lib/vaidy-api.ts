@@ -75,6 +75,7 @@ export type VaidyStatus = {
     configured: boolean;
     url: string;
     async_sync: boolean;
+    storage_bucket?: string;
   };
 };
 
@@ -290,6 +291,7 @@ export function uploadReportWithProgress(
     userId?: string;
     sessionId?: string;
     relativePath?: string;
+    supabaseAccessToken?: string;
   } & UploadStartHandlers = {},
 ): Promise<UploadStartPayload> {
   return new Promise((resolve, reject) => {
@@ -336,6 +338,7 @@ export function uploadReportWithProgress(
     if (options.userId) form.append("user_id", options.userId);
     if (options.sessionId) form.append("session_id", options.sessionId);
     if (options.relativePath) form.append("relative_path", options.relativePath);
+    if (options.supabaseAccessToken) form.append("supabase_access_token", options.supabaseAccessToken);
     xhr.send(form);
   });
 }

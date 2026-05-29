@@ -18,7 +18,14 @@ from .memory import (
     remember_turn,
     save_chat_message,
 )
-from .store import SearchHit, get_report, health_context_for_query, search_reports
+from .store import (
+    SearchHit,
+    existing_report_ids,
+    get_report,
+    health_context_for_query,
+    report_evidence,
+    search_reports,
+)
 
 
 @dataclass(frozen=True)
@@ -83,8 +90,17 @@ def chat_response(
             active_settings.default_user_id,
             active_settings,
         )
-        if retrieval_intent in {"report_comparison", "other"} or not health_context_text:
-            evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings)
+        # Always retrieve report evidence so actual findings (image findings,
+        # biomarkers, document text) are available to answer from. The health
+        # timeline context alone never carries the report findings, so relying
+        # on it would make the agent claim it has no findings when it does.
+        evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings)
+        # When the user points at a specific stored report, attach that report's
+        # own evidence directly so a reference like "report #7" is answered from
+        # report 7 rather than only whatever semantic search surfaced.
+        referenced = referenced_report_evidence(message, active_settings)
+        if referenced:
+            evidence = _merge_evidence(referenced, evidence, active_settings.chat_evidence_limit)
     memory_context_text = str(memory_payload.get("context") or "")
     language = detect_language(message, language_preference)
     fresh_block = _format_fresh_report_block(fresh_report, active_settings) if fresh_report else ""
@@ -123,6 +139,58 @@ def chat_response(
         language=language,
         retrieval_intent=retrieval_intent,
     )
+
+
+def referenced_report_evidence(message: str, settings: AgentSettings) -> list[SearchHit]:
+    """Collect evidence for any stored report the user names by id.
+
+    A reference like "report #7" or "report 7" should pull report 7's own
+    findings. Ids are read by plain token parsing, not pattern matching, so
+    this stays robust without hardcoded phrases.
+    """
+    report_ids = existing_report_ids(settings)
+    if not report_ids:
+        return []
+    mentioned = _mentioned_report_ids(message, report_ids)
+    if not mentioned:
+        return []
+    collected: list[SearchHit] = []
+    for report_id in mentioned:
+        collected.extend(report_evidence(report_id, settings=settings))
+    return collected
+
+
+def _mentioned_report_ids(message: str, known_ids: set[int]) -> list[int]:
+    """Return stored report ids that appear as standalone numbers in the text."""
+    found: list[int] = []
+    seen: set[int] = set()
+    for raw_token in str(message or "").split():
+        digits = "".join(char for char in raw_token if char.isdigit())
+        if not digits:
+            continue
+        try:
+            value = int(digits)
+        except ValueError:
+            continue
+        if value in known_ids and value not in seen:
+            seen.add(value)
+            found.append(value)
+    return found
+
+
+def _merge_evidence(primary: list[SearchHit], extra: list[SearchHit], limit: int) -> list[SearchHit]:
+    """Keep the directly referenced report evidence first, then fill with search hits."""
+    merged: list[SearchHit] = []
+    seen_chunks: set[int] = set()
+    for hit in list(primary) + list(extra):
+        if hit.chunk_id in seen_chunks:
+            continue
+        seen_chunks.add(hit.chunk_id)
+        merged.append(hit)
+    # When a specific report is referenced, do not truncate its chunks away;
+    # allow a little more room so all findings of that report survive.
+    cap = max(limit, len(primary))
+    return merged[:cap]
 
 
 def should_use_report_context(message: str, settings: AgentSettings | None = None) -> bool:

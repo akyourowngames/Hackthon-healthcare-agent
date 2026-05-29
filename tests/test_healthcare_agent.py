@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from healthcare_agent import chat, cli, embedder, memory, store
+from healthcare_agent import chat, cli, embedder, memory, store, supabase_sync
 from healthcare_agent.config import AgentSettings
 from healthcare_agent.embedder import EmbeddingResult
 
@@ -65,6 +66,7 @@ def temp_settings(root: Path) -> AgentSettings:
         supabase_enabled=False,
         supabase_url="",
         supabase_service_role_key="",
+        supabase_storage_bucket="User Data",
         supabase_timeout_seconds=1,
         supabase_sync_async=True,
         memory_enabled=True,
@@ -148,6 +150,12 @@ def fake_embeddings(texts, settings=None):
     return EmbeddingResult(matrix, "test")
 
 
+def fake_jwt(role: str) -> str:
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps({"role": role}).encode()).decode().rstrip("=")
+    return f"{header}.{payload}.signature"
+
+
 class HealthcareAgentTests(unittest.TestCase):
     def test_embedder_uses_local_onnx_before_remote(self):
         settings = temp_settings(Path(tempfile.mkdtemp()))
@@ -184,6 +192,41 @@ class HealthcareAgentTests(unittest.TestCase):
         self.assertIn("triglycerides", answer)
         self.assertIn("local reports", answer)
         self.assertTrue(any("status abnormal" in chunk for chunk in store.report_chunks(sample_report())))
+
+    def test_image_findings_are_searchable_chunks(self):
+        payload = {
+            "patient_name": "scan sample",
+            "report_date": "2026-05-29",
+            "report_status": "image",
+            "summary": "Chest scan image could not be read reliably.",
+            "findings": [
+                {
+                    "title": "image not analyzed",
+                    "description": "The image is too small for reliable visual analysis.",
+                    "severity": "watch",
+                    "recommendation": "Upload a clearer scan.",
+                }
+            ],
+            "biomarkers": {},
+        }
+        chunks = store.report_chunks(payload)
+        joined = "\n".join(chunks)
+        self.assertIn("summary Chest scan image could not be read reliably.", joined)
+        self.assertIn("image finding 1", joined)
+        self.assertIn("title image not analyzed", joined)
+
+    def test_supabase_anon_key_requires_user_token_or_service_role(self):
+        settings = temp_settings(Path(tempfile.mkdtemp()))
+        settings = AgentSettings(
+            **{
+                **settings.__dict__,
+                "supabase_enabled": True,
+                "supabase_url": "https://example.supabase.co",
+                "supabase_service_role_key": fake_jwt("anon"),
+            }
+        )
+        result = supabase_sync.sync_report_bundle(1, settings)
+        self.assertEqual(result["reason"], "auth_token_or_service_role_required")
 
     def test_duplicate_report_payload_is_not_stored_twice(self):
         with tempfile.TemporaryDirectory() as temp_dir:

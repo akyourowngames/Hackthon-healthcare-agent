@@ -67,6 +67,7 @@ code.
 - enabled: false
 - url:
 - service_role_key:
+- storage_bucket: User Data
 - timeout_seconds: 8
 - sync_async: true
 

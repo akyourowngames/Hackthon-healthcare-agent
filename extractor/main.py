@@ -371,8 +371,13 @@ def run_image_pipeline(
     settings = settings_from_env()
     errors: list[str] = []
     payload: dict[str, Any] | None = None
+    low_information_image = _is_low_information_image(source)
+    if low_information_image:
+        errors.append("image file is too small to support reliable visual analysis")
     if not local_only and settings.available:
         try:
+            if low_information_image:
+                raise NimExtractionError("image skipped before vision analysis because it is too small")
             from .nim_extractor import extract_report_from_image_file
 
             payload = extract_report_from_image_file(source, target_dir, settings=settings)
@@ -436,6 +441,14 @@ def run_image_pipeline(
         "biomarker_count": len(output_payload.get("biomarkers", {})),
         "finding_count": len(output_payload.get("findings", [])),
     }
+
+
+def _is_low_information_image(path: Path) -> bool:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False
+    return size < 512
 
 
 if __name__ == "__main__":

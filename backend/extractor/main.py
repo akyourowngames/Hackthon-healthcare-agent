@@ -406,6 +406,7 @@ def run_image_pipeline(
                         "title": "image not analyzed",
                         "detail": "; ".join(errors) or "no extractor was available for this image.",
                         "severity": "watch",
+                        "system_note": True,
                     }
                 ],
                 "biomarkers": {},
@@ -417,6 +418,7 @@ def run_image_pipeline(
                 "title": "image stored",
                 "detail": "Vaidy stored the image but did not extract structured findings.",
                 "severity": "watch",
+                "system_note": True,
             }
         ]
     try:

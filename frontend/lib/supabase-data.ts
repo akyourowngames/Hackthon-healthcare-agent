@@ -1,4 +1,28 @@
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "./supabase";
+
+const STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || "User Data";
+
+/**
+ * Get an authenticated Supabase client that definitely has the user's token set.
+ * This ensures RLS policies work correctly.
+ */
+async function getAuthClient(): Promise<SupabaseClient | null> {
+  if (!isSupabaseConfigured) return null;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return null;
+  // Create a client with the access token explicitly set in global headers
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  return createClient(url, anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 export type SupabaseReport = {
   id: number;
@@ -55,8 +79,9 @@ export type SupabaseShareLink = {
  * Fetch all reports for the authenticated user directly from Supabase.
  */
 export async function fetchUserReports(userId: string): Promise<SupabaseReport[]> {
-  if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase
+  const client = await getAuthClient();
+  if (!client) return [];
+  const { data, error } = await client
     .from("reports")
     .select("*")
     .eq("user_id", userId)
@@ -69,8 +94,9 @@ export async function fetchUserReports(userId: string): Promise<SupabaseReport[]
  * Fetch biomarker history for the authenticated user.
  */
 export async function fetchUserBiomarkers(userId: string): Promise<SupabaseBiomarker[]> {
-  if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase
+  const client = await getAuthClient();
+  if (!client) return [];
+  const { data, error } = await client
     .from("biomarker_history")
     .select("*")
     .eq("user_id", userId)
@@ -83,8 +109,9 @@ export async function fetchUserBiomarkers(userId: string): Promise<SupabaseBioma
  * Fetch anomaly findings for the authenticated user.
  */
 export async function fetchUserAnomalies(userId: string): Promise<SupabaseAnomaly[]> {
-  if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase
+  const client = await getAuthClient();
+  if (!client) return [];
+  const { data, error } = await client
     .from("anomaly_findings")
     .select("*")
     .eq("user_id", userId)
@@ -97,8 +124,9 @@ export async function fetchUserAnomalies(userId: string): Promise<SupabaseAnomal
  * Fetch share links for the authenticated user.
  */
 export async function fetchUserShareLinks(userId: string): Promise<SupabaseShareLink[]> {
-  if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase
+  const client = await getAuthClient();
+  if (!client) return [];
+  const { data, error } = await client
     .from("share_links")
     .select("*")
     .eq("user_id", userId)
@@ -112,9 +140,9 @@ export async function fetchUserShareLinks(userId: string): Promise<SupabaseShare
  */
 export function getReportFileUrl(userId: string, filename: string): string {
   if (!isSupabaseConfigured) return "";
-  const safeUser = userId.replace(/[/\\]/g, "_");
+  const safeUser = storageSafeSegment(userId);
   const { data } = supabase.storage
-    .from("User Data")
+    .from(STORAGE_BUCKET)
     .getPublicUrl(`${safeUser}/${filename}`);
   return data?.publicUrl || "";
 }
@@ -124,16 +152,22 @@ export function getReportFileUrl(userId: string, filename: string): string {
  */
 export async function listUserFiles(userId: string): Promise<Array<{ name: string; url: string; created_at: string }>> {
   if (!isSupabaseConfigured) return [];
-  const safeUser = userId.replace(/[/\\]/g, "_");
+  const safeUser = storageSafeSegment(userId);
   const { data, error } = await supabase.storage
-    .from("User Data")
+    .from(STORAGE_BUCKET)
     .list(safeUser, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
   if (error || !data) return [];
-  return data.map((file) => ({
-    name: file.name,
-    url: getReportFileUrl(userId, file.name),
-    created_at: file.created_at || "",
-  }));
+  const files = [];
+  for (const file of data) {
+    const path = `${safeUser}/${file.name}`;
+    const signed = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(path, 60 * 10);
+    files.push({
+      name: file.name,
+      url: signed.data?.signedUrl || getReportFileUrl(userId, file.name),
+      created_at: file.created_at || "",
+    });
+  }
+  return files;
 }
 
 /**
@@ -141,16 +175,49 @@ export async function listUserFiles(userId: string): Promise<Array<{ name: strin
  */
 export async function deleteReport(reportId: number, userId: string, sourcePath: string): Promise<void> {
   if (!isSupabaseConfigured) return;
-  // Delete from reports table
+  const { data } = await supabase
+    .from("reports")
+    .select("id,local_report_id")
+    .eq("id", reportId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  const localReportId = Number(data?.local_report_id || reportId);
+  await supabase.from("notification_outbox").delete().eq("local_report_id", localReportId).eq("user_id", userId);
+  await supabase.from("biomarker_history").delete().eq("local_report_id", localReportId).eq("user_id", userId);
   await supabase.from("reports").delete().eq("id", reportId).eq("user_id", userId);
-  // Delete associated biomarker history
-  await supabase.from("biomarker_history").delete().eq("local_report_id", reportId).eq("user_id", userId);
-  // Try to delete from storage if we have the path
   if (sourcePath) {
-    const filename = sourcePath.split("/").pop() || sourcePath.split("\\").pop() || "";
+    const filename = basenameFromPath(sourcePath);
     if (filename) {
-      const safeUser = userId.replace(/[/\\]/g, "_");
-      await supabase.storage.from("User Data").remove([`${safeUser}/${filename}`]);
+      const safeUser = storageSafeSegment(userId);
+      await supabase.storage.from(STORAGE_BUCKET).remove([`${safeUser}/${filename}`]);
     }
   }
+}
+
+function storageSafeSegment(value: string): string {
+  const cleaned: string[] = [];
+  for (const char of String(value || "").trim()) {
+    if (char === "/" || char === "\\" || char === ":" || char === "*" || char === "?" || char === "\"" || char === "<" || char === ">" || char === "|") {
+      cleaned.push("_");
+    } else {
+      cleaned.push(char);
+    }
+  }
+  const segment = cleaned.join("").trim();
+  return segment || "file";
+}
+
+function basenameFromPath(value: string): string {
+  const parts: string[] = [];
+  let current = "";
+  for (const char of String(value || "")) {
+    if (char === "/" || char === "\\") {
+      if (current) parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current) parts.push(current);
+  return parts[parts.length - 1] || "";
 }
