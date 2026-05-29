@@ -4,6 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  fetchUserReports,
+  fetchUserBiomarkers,
+  fetchUserAnomalies,
+  listUserFiles,
+  deleteReport,
+  SupabaseReport,
+} from "@/lib/supabase-data";
 import {
   AnomalyFinding,
   BiomarkerHistoryRow,
@@ -36,11 +45,117 @@ export default function DashboardPage() {
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const payload = await getDashboard(userId);
-      setDashboard(payload);
-      setError("");
+      // Try Supabase direct fetch first if configured and authenticated
+      if (isSupabaseConfigured && userId !== "local-user") {
+        const [reports, biomarkers, anomalies] = await Promise.all([
+          fetchUserReports(userId),
+          fetchUserBiomarkers(userId),
+          fetchUserAnomalies(userId),
+        ]);
+
+        // Build dashboard payload from Supabase data
+        const abnormalLatest = biomarkers.filter(
+          (b) => b.flag && b.flag !== "normal" && b.flag !== "N" && b.flag !== ""
+        ).length;
+        const uniqueBiomarkers = new Map<string, { latest: BiomarkerHistoryRow; history: BiomarkerHistoryRow[]; points: number }>();
+        for (const b of biomarkers) {
+          const row: BiomarkerHistoryRow = {
+            id: b.id,
+            user_id: b.user_id,
+            report_id: b.local_report_id,
+            biomarker_name: b.biomarker_name,
+            value: b.value,
+            unit: b.unit,
+            flag: b.flag,
+            ref_range: b.ref_range,
+            report_date: b.report_date,
+            lab_name: b.lab_name,
+            created_at: b.created_at,
+          };
+          const existing = uniqueBiomarkers.get(b.biomarker_name);
+          if (existing) {
+            existing.history.push(row);
+            existing.latest = row;
+            existing.points = existing.history.length;
+          } else {
+            uniqueBiomarkers.set(b.biomarker_name, { latest: row, history: [row], points: 1 });
+          }
+        }
+
+        const biomarkerList = Array.from(uniqueBiomarkers.entries()).map(([name, data]) => ({
+          name,
+          latest: data.latest,
+          history: data.history,
+          points: data.points,
+        }));
+
+        const anomalyList: AnomalyFinding[] = anomalies.map((a) => ({
+          id: a.id,
+          user_id: a.user_id,
+          biomarker: a.biomarker,
+          finding_type: a.finding_type,
+          severity: a.severity as "watch" | "concern" | "urgent",
+          description: a.description,
+          data_points: a.data_points as Array<Record<string, unknown>>,
+          metrics: a.metrics,
+          detected_at: a.detected_at,
+        }));
+
+        const score = Math.max(0, 100 - (abnormalLatest * 5) - (anomalyList.length * 3));
+
+        const payload: DashboardPayload = {
+          user_id: userId,
+          health_score: {
+            score,
+            latest_biomarkers: biomarkerList.length,
+            abnormal_latest: abnormalLatest,
+            finding_count: anomalyList.length,
+          },
+          anomalies: anomalyList,
+          biomarkers: biomarkerList,
+          history: biomarkers.map((b) => ({
+            id: b.id,
+            user_id: b.user_id,
+            report_id: b.local_report_id,
+            biomarker_name: b.biomarker_name,
+            value: b.value,
+            unit: b.unit,
+            flag: b.flag,
+            ref_range: b.ref_range,
+            report_date: b.report_date,
+            lab_name: b.lab_name,
+            created_at: b.created_at,
+          })),
+          reports: reports.map((r) => ({
+            id: r.id,
+            local_report_id: r.local_report_id,
+            user_id: r.user_id,
+            patient_name: r.patient_name,
+            report_date: r.report_date,
+            lab_name: r.lab_name,
+            report_status: r.report_status,
+            biomarker_count: r.biomarker_count,
+            source_path: r.source_path,
+            created_at: r.created_at,
+          })),
+        };
+        setDashboard(payload);
+        setError("");
+      } else {
+        // Fallback to local API
+        const payload = await getDashboard(userId);
+        setDashboard(payload);
+        setError("");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dashboard unavailable");
+      // If Supabase fails, try local API as fallback
+      try {
+        const payload = await getDashboard(userId);
+        setDashboard(payload);
+        setError("");
+      } catch (fallbackErr) {
+        setError(fallbackErr instanceof Error ? fallbackErr.message : "Dashboard unavailable");
+      }
     } finally {
       setRefreshing(false);
     }
@@ -232,6 +347,22 @@ function ReportsTab({
   onRefresh: () => void;
 }) {
   const reports = dashboard?.reports || [];
+  const [files, setFiles] = useState<Array<{ name: string; url: string; created_at: string }>>([]);
+
+  useEffect(() => {
+    if (isSupabaseConfigured && userId !== "local-user") {
+      listUserFiles(userId).then(setFiles).catch(() => {});
+    }
+  }, [userId]);
+
+  const handleDelete = async (report: Record<string, unknown>) => {
+    const id = Number(report.id || 0);
+    const sourcePath = String(report.source_path || "");
+    if (!id) return;
+    if (!window.confirm("Delete this report? This cannot be undone.")) return;
+    await deleteReport(id, userId, sourcePath);
+    onRefresh();
+  };
 
   return (
     <div className="space-y-6">
@@ -251,15 +382,39 @@ function ReportsTab({
       ) : (
         <div className="space-y-3">
           {reports.map((report, idx) => (
-            <ReportRow key={String(report.id || idx)} report={report} />
+            <ReportRow key={String(report.id || idx)} report={report} onDelete={() => handleDelete(report)} />
           ))}
         </div>
+      )}
+
+      {/* Uploaded files from Supabase Storage */}
+      {files.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-bold">Uploaded Files</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {files.map((file) => (
+              <a
+                key={file.name}
+                href={file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition hover:border-[#00d97e]/30"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#00d97e]/[0.08] text-[#00d97e] text-xs">📎</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-white/70">{file.name}</p>
+                  <p className="text-[10px] text-white/30">{file.created_at ? new Date(file.created_at).toLocaleDateString() : ""}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );
 }
 
-function ReportRow({ report }: { report: Record<string, unknown> }) {
+function ReportRow({ report, onDelete }: { report: Record<string, unknown>; onDelete?: () => void }) {
   const name = String(report.patient_name || "Unknown");
   const date = String(report.report_date || "No date");
   const lab = String(report.lab_name || "Unknown lab");
@@ -275,12 +430,22 @@ function ReportRow({ report }: { report: Record<string, unknown> }) {
         <p className="truncate text-sm font-bold">{name}</p>
         <p className="mt-0.5 text-xs text-white/40">{date} · {lab} · {biomarkers} biomarkers</p>
       </div>
-      <Link
-        href={`/chat?ask=${encodeURIComponent(`Explain report #${id} in simple terms`)}`}
-        className="shrink-0 rounded-lg border border-white/[0.08] px-3 py-1.5 text-[11px] font-bold text-white/50 transition hover:border-[#00d97e]/30 hover:text-[#00d97e]"
-      >
-        Ask Vaidy
-      </Link>
+      <div className="flex items-center gap-2">
+        <Link
+          href={`/chat?ask=${encodeURIComponent(`Explain report #${id} in simple terms`)}`}
+          className="shrink-0 rounded-lg border border-white/[0.08] px-3 py-1.5 text-[11px] font-bold text-white/50 transition hover:border-[#00d97e]/30 hover:text-[#00d97e]"
+        >
+          Ask Vaidy
+        </Link>
+        {onDelete && isSupabaseConfigured && (
+          <button
+            onClick={onDelete}
+            className="shrink-0 rounded-lg border border-red-400/20 px-2.5 py-1.5 text-[11px] font-bold text-red-300/50 transition hover:border-red-400/40 hover:text-red-300"
+          >
+            Delete
+          </button>
+        )}
+      </div>
     </div>
   );
 }

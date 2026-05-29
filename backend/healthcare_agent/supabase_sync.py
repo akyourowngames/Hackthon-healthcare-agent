@@ -44,6 +44,71 @@ def sync_report_async(report_id: int, settings: AgentSettings | None = None) -> 
     sync_report_bundle(int(report_id), active_settings)
 
 
+def upload_file_to_storage(
+    file_path: Path,
+    user_id: str,
+    settings: AgentSettings | None = None,
+) -> dict[str, Any]:
+    """Upload a report file to Supabase Storage 'User Data' bucket."""
+    active_settings = settings or load_agent_settings()
+    if not active_settings.supabase_enabled or not _configured(active_settings):
+        return {"uploaded": False, "reason": "disabled_or_unconfigured"}
+    try:
+        base_url = active_settings.supabase_url.rstrip("/")
+        safe_user = user_id.replace("/", "_").replace("\\", "_")
+        storage_path = f"{safe_user}/{file_path.name}"
+        url = f"{base_url}/storage/v1/object/User Data/{storage_path}"
+        content = file_path.read_bytes()
+        content_type = _guess_content_type(file_path.suffix.lower())
+        request = urllib.request.Request(url, data=content, method="POST")
+        request.add_header("Authorization", f"Bearer {active_settings.supabase_service_role_key}")
+        request.add_header("Content-Type", content_type)
+        request.add_header("x-upsert", "true")
+        with urllib.request.urlopen(request, timeout=active_settings.supabase_timeout_seconds) as response:
+            if response.status >= 400:
+                raise RuntimeError(f"Storage upload failed with {response.status}")
+        public_url = f"{base_url}/storage/v1/object/public/User Data/{storage_path}"
+        return {"uploaded": True, "path": storage_path, "public_url": public_url}
+    except Exception as exc:
+        _write_sync_error(active_settings, 0, exc)
+        return {"uploaded": False, "reason": str(exc)}
+
+
+def upload_file_to_storage_async(
+    file_path: Path,
+    user_id: str,
+    settings: AgentSettings | None = None,
+) -> None:
+    """Upload file to storage in background thread."""
+    active_settings = settings or load_agent_settings()
+    if not active_settings.supabase_enabled or not _configured(active_settings):
+        return
+    thread = threading.Thread(
+        target=upload_file_to_storage,
+        args=(file_path, user_id, active_settings),
+        daemon=True,
+    )
+    thread.start()
+
+
+def _guess_content_type(ext: str) -> str:
+    types = {
+        ".pdf": "application/pdf",
+        ".json": "application/json",
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".heic": "image/heic",
+        ".bmp": "image/bmp",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+    }
+    return types.get(ext, "application/octet-stream")
+
+
 def sync_share_link_async(link: dict[str, Any], settings: AgentSettings | None = None) -> None:
     active_settings = settings or load_agent_settings()
     if not active_settings.supabase_enabled or not _configured(active_settings):

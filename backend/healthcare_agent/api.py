@@ -44,7 +44,7 @@ from .store import (
     list_reports,
     search_reports,
 )
-from .supabase_sync import supabase_status
+from .supabase_sync import supabase_status, upload_file_to_storage_async
 
 
 @dataclass(frozen=True)
@@ -537,6 +537,8 @@ def _start_upload_job(
             if isinstance(report_id, int) and session_id and settings.memory_enabled:
                 bind_session_to_report(session_id, int(report_id), settings)
                 _store_upload_memory(session_id, result, settings)
+            # Upload file to Supabase Storage bucket
+            upload_file_to_storage_async(path, user_id or settings.default_user_id, settings)
             job.result = result
             job.done = True
             _publish_upload(job, "done", {"stage": "done", "message": "Done", "result": result, "file_label": job.file_label})
