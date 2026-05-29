@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
+import { DM_Sans, Sora } from "next/font/google";
 import "./globals.css";
 import { WaitlistProvider } from "@/components/WaitlistProvider";
 import { AuthProvider } from "@/lib/auth-context";
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-dm-sans",
+});
+
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  variable: "--font-sora",
+});
 
 const SITE_URL = "https://vaidy.vercel.app";
 const SITE_TITLE = "Vaidy — Your AI Health Copilot, Built for India";
@@ -67,8 +80,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
+    <html lang="en" className={`h-full antialiased ${dmSans.variable} ${sora.variable}`}>
+      <body className="min-h-full flex flex-col font-sans">
         <div className="page-light" aria-hidden="true" />
         <div className="vignette" aria-hidden="true" />
 
