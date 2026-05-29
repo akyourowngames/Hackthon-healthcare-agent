@@ -77,53 +77,17 @@ export default function AuthPage() {
       return;
     }
 
-    setMessage("Connecting to Google...", "info");
+    setMessage("Redirecting to Google...", "info");
 
-    // Get the OAuth URL without auto-redirecting so we can verify the provider is enabled
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        skipBrowserRedirect: true,
-        queryParams: { access_type: "offline", prompt: "consent" },
       },
     });
 
-    if (error || !data?.url) {
-      setMessage(error?.message || "Could not start Google sign-in.", "error");
-      return;
-    }
-
-    // Pre-flight: check if the provider is actually enabled in Supabase
-    try {
-      const check = await fetch(data.url, { method: "GET", redirect: "manual" });
-      // A working provider returns an opaque redirect (to Google's consent screen).
-      // A disabled provider returns a 400 with a JSON error body.
-      if (check.type === "opaqueredirect" || check.status === 0 || (check.status >= 300 && check.status < 400)) {
-        window.location.href = data.url;
-        return;
-      }
-      // Try to read the error message from Supabase
-      let detail = "Google sign-in is not enabled yet.";
-      try {
-        const body = await check.json();
-        if (body?.msg || body?.error_description) {
-          detail = String(body.msg || body.error_description);
-        }
-      } catch {
-        // ignore parse error
-      }
-      if (detail.toLowerCase().includes("not enabled")) {
-        setMessage(
-          "Google sign-in isn't enabled on the server yet. Use email/password below, or ask the admin to enable Google in Supabase → Authentication → Providers.",
-          "error",
-        );
-      } else {
-        setMessage(detail, "error");
-      }
-    } catch {
-      // If the pre-flight fetch fails (e.g. CORS), just attempt the normal redirect
-      window.location.href = data.url;
+    if (error) {
+      setMessage(error.message, "error");
     }
   };
 

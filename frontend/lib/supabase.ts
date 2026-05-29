@@ -12,6 +12,7 @@ export const supabase: SupabaseClient = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        flowType: "pkce",
       },
     })
   : createClient("https://placeholder.supabase.co", "placeholder-key", {
