@@ -10,6 +10,7 @@ import {
   UploadStatusPayload,
   VaidyMessage,
   VaidyStatus,
+  checkVaidyHealth,
   clearActiveReport,
   getVaidyStatus,
   processInputFolder,
@@ -45,6 +46,8 @@ type UploadItem = {
   error?: string;
 };
 
+type BackendMode = "checking" | "real" | "mock";
+
 const promptChips = [
   "Analyze my latest report",
   "What reports are in memory?",
@@ -57,6 +60,9 @@ const promptChips = [
 const SESSION_KEY = "vaidy_chat_session_id";
 const LANGUAGE_KEY = "vaidy_language_preference";
 const USER_KEY = "vaidy_user_id";
+const MOCK_TYPING_DELAY_MS = 15;
+const MOCK_HEMOGLOBIN_REPLY = "Your hemoglobin is 11.2 g/dL, which is below the normal range of 13.5–17.5 g/dL for adult males. This suggests mild anemia. Common causes include iron deficiency or B12 deficiency. I'd recommend asking your doctor for a serum ferritin test to confirm.";
+const MOCK_DEFAULT_REPLY = "Based on Rohan's CBC report, most markers are within normal range. Platelets are 420,000/μL — slightly elevated but not clinically alarming. WBC count is 7,200/μL, which is normal. The main concern is the hemoglobin level at 11.2 g/dL. Would you like a detailed breakdown of any specific value?";
 const languageOptions = [
   { label: "Auto", value: "auto" },
   { label: "EN", value: "en" },
@@ -80,6 +86,28 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function mockReplyFor(message: string) {
+  const normalized = message.toLowerCase();
+  const anemiaTerms = ["hemoglobin", "haemoglobin", "anemia", "anaemia", "hb"];
+  const asksAboutAnemia = anemiaTerms.some((term) => normalized.includes(term));
+  return asksAboutAnemia ? MOCK_HEMOGLOBIN_REPLY : MOCK_DEFAULT_REPLY;
+}
+
+function waitForMockTyping(signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+
+    const timeoutId = window.setTimeout(resolve, MOCK_TYPING_DELAY_MS);
+    signal.addEventListener("abort", () => {
+      window.clearTimeout(timeoutId);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
+}
+
 export default function AssistantConsole() {
   const [messages, setMessages] = useState<ChatRecord[]>([]);
   const [input, setInput] = useState("");
@@ -95,6 +123,7 @@ export default function AssistantConsole() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [freshUpload, setFreshUpload] = useState<FreshUpload | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [backendMode, setBackendMode] = useState<BackendMode>("checking");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -122,8 +151,9 @@ export default function AssistantConsole() {
   const activeUploads = uploads.filter(
     (i) => i.stage !== "done" && i.stage !== "error" && i.stage !== "cancelled",
   );
-  const connectionLabel = statusError ? "offline" : status ? "live" : "connecting";
-  const connectionDotClass = statusError ? "bg-red-400" : status ? "bg-[#00d97e]" : "bg-amber-300";
+  const isMockMode = backendMode === "mock";
+  const connectionLabel = isMockMode ? "demo" : statusError ? "offline" : status ? "live" : "connecting";
+  const connectionDotClass = isMockMode ? "bg-amber-300" : statusError ? "bg-red-400" : status ? "bg-[#00d97e]" : "bg-amber-300";
 
   const syncSessionId = useCallback((value: unknown) => {
     if (typeof value !== "string" || !value.trim()) return;
@@ -146,7 +176,32 @@ export default function AssistantConsole() {
     }
   }, []);
 
-  useEffect(() => { refreshStatus(); }, [refreshStatus]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveBackend = async () => {
+      setStreamLabel("connecting");
+      const healthy = await checkVaidyHealth();
+      if (cancelled) return;
+
+      if (!healthy) {
+        setBackendMode("mock");
+        setStatus(null);
+        setFreshUpload(null);
+        setStatusError("");
+        setStreamLabel("demo");
+        return;
+      }
+
+      setBackendMode("real");
+      await refreshStatus();
+      if (!cancelled) setStreamLabel("ready");
+    };
+
+    resolveBackend();
+
+    return () => { cancelled = true; };
+  }, [refreshStatus]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(SESSION_KEY);
@@ -309,6 +364,19 @@ export default function AssistantConsole() {
     setMessages((cur) => [...cur, userMsg, aMsg]);
     startFlushInterval();
     try {
+      if (isMockMode) {
+        setStreamLabel("streaming");
+        const reply = mockReplyFor(trimmed);
+        for (const char of Array.from(reply)) {
+          streamBufferRef.current += char;
+          await waitForMockTyping(ctrl.signal);
+        }
+        stopFlushInterval();
+        setMessages((cur) => cur.map((m) => m.id === aId ? { ...m, content: reply, pending: false, model: "demo" } : m));
+        setStreamLabel("ready");
+        return;
+      }
+
       await streamVaidyChat(trimmed, history, false, sessionIdRef.current, languagePreference, {
         signal: ctrl.signal,
         onMeta: (p) => { syncSessionId(p.session_id); setStreamLabel("thinking"); },
@@ -330,13 +398,17 @@ export default function AssistantConsole() {
       });
     } catch (e) {
       stopFlushInterval();
-      const msg = e instanceof Error ? e.message : "Could not reach the API.";
-      setMessages((cur) => cur.map((m) => m.id === aId ? { ...m, content: msg, pending: false, model: "unavailable" } : m));
-      setStreamLabel("error");
+      const wasCancelled = ctrl.signal.aborted;
+      const msg = wasCancelled ? streamBufferRef.current || "Cancelled" : e instanceof Error ? e.message : "Could not reach the API.";
+      setMessages((cur) => cur.map((m) => m.id === aId ? { ...m, content: msg, pending: false, model: wasCancelled ? "stopped" : "unavailable" } : m));
+      setStreamLabel(wasCancelled ? "stopped" : "error");
+    } finally {
+      chatAbortRef.current = null; activeAssistantIdRef.current = ""; streamBufferRef.current = "";
+      stopFlushInterval(); setIsStreaming(false);
+      if (!isMockMode) refreshStatus();
+      inputRef.current?.focus();
     }
-    chatAbortRef.current = null; activeAssistantIdRef.current = ""; streamBufferRef.current = "";
-    stopFlushInterval(); setIsStreaming(false); refreshStatus(); inputRef.current?.focus();
-  }, [history, isStreaming, languagePreference, refreshStatus, startFlushInterval, stopFlushInterval, syncSessionId]);
+  }, [history, isMockMode, isStreaming, languagePreference, refreshStatus, startFlushInterval, stopFlushInterval, syncSessionId]);
 
   const stopStreaming = useCallback(() => { chatAbortRef.current?.abort(); }, []);
   const submit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); sendMessage(input); };
@@ -361,6 +433,11 @@ export default function AssistantConsole() {
             <span className="text-sm font-extrabold tracking-tight">vaidy</span>
           </Link>
           <div className="flex items-center gap-2.5 text-[11px] text-white/50">
+            {isMockMode && (
+              <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2.5 py-1 font-semibold text-amber-100">
+                Demo mode
+              </span>
+            )}
             <Link href="/dashboard" className="hidden rounded-lg border border-white/[0.09] px-2.5 py-1.5 font-semibold text-white/70 transition hover:border-[#00d97e]/40 hover:text-white sm:inline-flex">
               Dashboard
             </Link>
@@ -411,7 +488,7 @@ export default function AssistantConsole() {
                 )}
               </form>
               <p className="text-center text-[10px] text-white/25">
-                {statusError ? statusError : status ? `Reports: ${status.report_count} · Memory: ${status.memory?.entries ?? "..."} · ${streamLabel}` : `Connecting... · ${streamLabel}`}
+                {isMockMode ? `Demo CBC: Rohan, 28M · ${streamLabel}` : statusError ? statusError : status ? `Reports: ${status.report_count} · Memory: ${status.memory?.entries ?? "..."} · ${streamLabel}` : `Connecting... · ${streamLabel}`}
               </p>
             </div>
           </div>
