@@ -872,6 +872,10 @@ function UploadSection() {
                         <span key={b} style={{ padding: "4px 12px", background: "rgba(0,217,126,0.1)", border: "1px solid rgba(0,217,126,0.2)", borderRadius: 20, fontSize: 12, color: EMERALD, fontFamily: "'DM Sans', sans-serif" }}>{b}</span>
                       ))}
                     </div>
+                    <Link href="/chat?demo=true" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 22, color: EMERALD, fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", textDecoration: "none" }}>
+                      Try demo
+                      <span aria-hidden="true">→</span>
+                    </Link>
                   </motion.div>
                 ) : (
                   <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
