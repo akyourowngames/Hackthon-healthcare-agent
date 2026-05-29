@@ -71,6 +71,10 @@ const languageOptions = [
 
 const DEFAULT_ACCEPT = ".pdf,.json,.txt,.md,.png,.jpg,.jpeg,.webp,.heic,.bmp,.tif,.tiff";
 const FLUSH_INTERVAL_MS = 30;
+const DEMO_QUERY_KEY = "demo";
+const DEMO_QUERY_VALUE = "true";
+const DEMO_REPORT_LABEL = "Rohan's CBC report (Oct 2024) is ready — ask me anything.";
+const DEMO_GREETING = "I've analysed Rohan's Complete Blood Count report from October 2024. I found 2 values that need attention: Hemoglobin (11.2 g/dL) is below normal range, and Platelets (420K/μL) are mildly elevated. Everything else looks healthy. What would you like to know?";
 
 function makeId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -124,6 +128,8 @@ export default function AssistantConsole() {
   const [freshUpload, setFreshUpload] = useState<FreshUpload | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [backendMode, setBackendMode] = useState<BackendMode>("checking");
+  const [isDemoUrl, setIsDemoUrl] = useState(false);
+  const [demoBannerDismissed, setDemoBannerDismissed] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -136,6 +142,7 @@ export default function AssistantConsole() {
   const sessionIdRef = useRef("");
   const dragDepthRef = useRef(0);
   const lastFlushedLenRef = useRef(0);
+  const demoSeededRef = useRef(false);
 
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
 
@@ -152,8 +159,11 @@ export default function AssistantConsole() {
     (i) => i.stage !== "done" && i.stage !== "error" && i.stage !== "cancelled",
   );
   const isMockMode = backendMode === "mock";
-  const connectionLabel = isMockMode ? "demo" : statusError ? "offline" : status ? "live" : "connecting";
-  const connectionDotClass = isMockMode ? "bg-amber-300" : statusError ? "bg-red-400" : status ? "bg-[#00d97e]" : "bg-amber-300";
+  const hasLoadedUserReport = Boolean(freshUpload) || uploads.some((item) => item.stage === "done");
+  const isDemoReportMode = isDemoUrl || !hasLoadedUserReport;
+  const shouldUseDemoReplies = isMockMode || isDemoReportMode;
+  const connectionLabel = shouldUseDemoReplies ? "demo" : statusError ? "offline" : status ? "live" : "connecting";
+  const connectionDotClass = shouldUseDemoReplies ? "bg-amber-300" : statusError ? "bg-red-400" : status ? "bg-[#00d97e]" : "bg-amber-300";
 
   const syncSessionId = useCallback((value: unknown) => {
     if (typeof value !== "string" || !value.trim()) return;
@@ -208,9 +218,26 @@ export default function AssistantConsole() {
     if (saved) { setSessionId(saved); sessionIdRef.current = saved; }
     const lang = window.localStorage.getItem(LANGUAGE_KEY);
     if (lang) setLanguagePreference(lang);
-    const ask = new URLSearchParams(window.location.search).get("ask");
+    const params = new URLSearchParams(window.location.search);
+    setIsDemoUrl(params.get(DEMO_QUERY_KEY) === DEMO_QUERY_VALUE);
+    const ask = params.get("ask");
     if (ask) setInput(ask);
   }, []);
+
+  useEffect(() => {
+    if (!isDemoReportMode || demoSeededRef.current) return;
+    demoSeededRef.current = true;
+    setMessages((cur) => {
+      if (cur.length) return cur;
+      return [{ id: "demo-greeting", role: "assistant", content: DEMO_GREETING, model: "demo" }];
+    });
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [isDemoReportMode]);
+
+  useEffect(() => {
+    if (!isDemoReportMode) return;
+    inputRef.current?.focus();
+  }, [isDemoReportMode]);
 
   useEffect(() => {
     const sync = () => document.documentElement.style.setProperty("--app-height", `${window.innerHeight}px`);
@@ -364,7 +391,7 @@ export default function AssistantConsole() {
     setMessages((cur) => [...cur, userMsg, aMsg]);
     startFlushInterval();
     try {
-      if (isMockMode) {
+      if (shouldUseDemoReplies) {
         setStreamLabel("streaming");
         const reply = mockReplyFor(trimmed);
         for (const char of Array.from(reply)) {
@@ -405,10 +432,10 @@ export default function AssistantConsole() {
     } finally {
       chatAbortRef.current = null; activeAssistantIdRef.current = ""; streamBufferRef.current = "";
       stopFlushInterval(); setIsStreaming(false);
-      if (!isMockMode) refreshStatus();
+      if (!shouldUseDemoReplies) refreshStatus();
       inputRef.current?.focus();
     }
-  }, [history, isMockMode, isStreaming, languagePreference, refreshStatus, startFlushInterval, stopFlushInterval, syncSessionId]);
+  }, [history, isStreaming, languagePreference, refreshStatus, shouldUseDemoReplies, startFlushInterval, stopFlushInterval, syncSessionId]);
 
   const stopStreaming = useCallback(() => { chatAbortRef.current?.abort(); }, []);
   const submit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); sendMessage(input); };
@@ -433,7 +460,7 @@ export default function AssistantConsole() {
             <span className="text-sm font-extrabold tracking-tight">vaidy</span>
           </Link>
           <div className="flex items-center gap-2.5 text-[11px] text-white/50">
-            {isMockMode && (
+            {shouldUseDemoReplies && (
               <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2.5 py-1 font-semibold text-amber-100">
                 Demo mode
               </span>
@@ -455,7 +482,8 @@ export default function AssistantConsole() {
           <div className="mx-auto flex h-full max-w-3xl flex-col px-4">
             <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-52 pt-6 sm:pb-56 sm:pt-8">
               <div className={hasUserMessages ? "space-y-5 pt-2" : "space-y-7"}>
-                {!hasUserMessages && <Intro status={status} streamLabel={streamLabel} />}
+                {isDemoReportMode && !demoBannerDismissed && <DemoReportBanner onDismiss={() => setDemoBannerDismissed(true)} />}
+                {!hasUserMessages && !isDemoReportMode && <Intro status={status} streamLabel={streamLabel} />}
                 {messages.map((m) => <MessageBlock key={m.id} message={m} />)}
                 {lastProcess && <ProcessNote summary={lastProcess} />}
                 <div ref={bottomRef} />
@@ -488,7 +516,7 @@ export default function AssistantConsole() {
                 )}
               </form>
               <p className="text-center text-[10px] text-white/25">
-                {isMockMode ? `Demo CBC: Rohan, 28M · ${streamLabel}` : statusError ? statusError : status ? `Reports: ${status.report_count} · Memory: ${status.memory?.entries ?? "..."} · ${streamLabel}` : `Connecting... · ${streamLabel}`}
+                {shouldUseDemoReplies ? `Demo CBC: Rohan, 28M · ${streamLabel}` : statusError ? statusError : status ? `Reports: ${status.report_count} · Memory: ${status.memory?.entries ?? "..."} · ${streamLabel}` : `Connecting... · ${streamLabel}`}
               </p>
             </div>
           </div>
@@ -515,6 +543,26 @@ function Intro({ status, streamLabel }: { status: VaidyStatus | null; streamLabe
         <Chip label="Memory" value={status?.memory ? String(status.memory.entries) : "..."} />
         <Chip label="Stream" value={streamLabel} />
       </div>
+      <Link href="/chat?demo=true" className="mt-5 inline-flex w-fit items-center gap-2 rounded-full border border-[#00d97e]/24 bg-[#00d97e]/10 px-4 py-2 text-xs font-bold text-[#7dffbf] transition hover:border-[#00d97e]/45 hover:bg-[#00d97e]/15">
+        Try demo
+        <span aria-hidden="true">→</span>
+      </Link>
+    </div>
+  );
+}
+
+function DemoReportBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#00d97e]/25 bg-[#00d97e]/10 px-3.5 py-2.5 text-sm text-[#c8ffe1] shadow-[0_12px_40px_rgba(0,217,126,0.08)]">
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#00d97e]/15 text-[#00d97e]">
+          <DocIcon />
+        </span>
+        <span className="font-semibold leading-5">{DEMO_REPORT_LABEL}</span>
+      </span>
+      <button type="button" onClick={onDismiss} className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[#c8ffe1]/65 transition hover:bg-[#00d97e]/15 hover:text-white" aria-label="Dismiss report loaded banner">
+        &times;
+      </button>
     </div>
   );
 }
