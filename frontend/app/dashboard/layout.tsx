@@ -1,41 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useState, type ReactNode } from "react";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
-import { useAuth } from "@/lib/auth-context";
-import { isSupabaseConfigured } from "@/lib/supabase";
 import { Sidebar, MobileBottomNav } from "@/components/dashboard/Sidebar";
 import { ToastContainer } from "@/components/ui/Toast";
 
 function DashboardShell({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const { signedIn, signIn } = useDashboard();
-  const { isAuthenticated, loading } = useAuth();
+  useDashboard();
   const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    if (!loading && isAuthenticated && !signedIn) {
-      signIn();
-    }
-  }, [loading, isAuthenticated, signedIn, signIn]);
-
-  const canAccess = signedIn || (isSupabaseConfigured && isAuthenticated);
-
-  useEffect(() => {
-    if (!loading && !canAccess) {
-      router.replace("/auth");
-    }
-  }, [loading, canAccess, router]);
-
-  if (loading || !canAccess) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f] text-slate-500">
-        Loading dashboard…
-      </div>
-    );
-  }
-
   const padLeft = collapsed ? "lg:pl-16" : "lg:pl-60";
 
   return (
