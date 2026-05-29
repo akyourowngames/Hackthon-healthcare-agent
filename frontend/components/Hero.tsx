@@ -90,13 +90,13 @@ export default function Hero() {
         >
           <motion.button
             type="button"
-            onClick={openWaitlist}
+            onClick={() => window.location.href = "/chat"}
             className="inline-flex items-center gap-2 rounded-[32px] bg-emerald-400 px-7 py-3.5 text-[15px] font-bold text-[#03120a] shadow-[0_0_32px_rgba(0,217,126,0.35)]"
             whileHover={{ scale: 1.04, boxShadow: "0 0 48px rgba(0,217,126,0.5)" }}
             whileTap={{ scale: 0.97 }}
           >
-            Upload a Report
-            <span aria-hidden="true">-&gt;</span>
+            Open Assistant
+            <span aria-hidden="true">→</span>
           </motion.button>
           <motion.a
             href="#demo"

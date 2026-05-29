@@ -2,16 +2,18 @@
 
 import { AnimatePresence, motion, useScroll, useTransform } from "framer-motion";
 import { useState, type MouseEvent } from "react";
+import Link from "next/link";
 import { useWaitlist } from "@/components/WaitlistProvider";
 
 const navLinks = [
+  { label: "Assistant", href: "/chat" },
   { label: "Features", href: "#features" },
   { label: "How it works", href: "#how-it-works" },
   { label: "Demo", href: "#demo" },
 ];
 
 function scrollToAnchor(event: MouseEvent<HTMLAnchorElement>, href: string) {
-  if (!href.startsWith("#")) return;
+  if (!href.startsWith("#")) return; // let normal navigation happen for page links
   const target = document.getElementById(href.slice(1));
   if (!target) return;
   event.preventDefault();
@@ -59,7 +61,7 @@ export default function Navbar() {
           ))}
           <motion.button
             type="button"
-            onClick={openWaitlist}
+            onClick={() => window.location.href = "/dashboard"}
             className="ml-2 rounded-3xl bg-emerald-400 px-5 py-[7px] text-[13.5px] font-semibold text-[#03120a] shadow-[0_0_24px_rgba(0,217,126,0.3)]"
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
@@ -113,7 +115,7 @@ export default function Navbar() {
                 className="mt-1 rounded-xl bg-emerald-400 px-4 py-3 text-center text-sm font-semibold text-[#03120a]"
                 onClick={() => {
                   setIsOpen(false);
-                  openWaitlist();
+                  window.location.href = "/dashboard";
                 }}
               >
                 Try free

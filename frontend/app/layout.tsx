@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { WaitlistProvider } from "@/components/WaitlistProvider";
+import { AuthProvider } from "@/lib/auth-context";
 
 const SITE_URL = "https://vaidy.vercel.app";
 const SITE_TITLE = "Vaidy — Your AI Health Copilot, Built for India";
@@ -72,7 +73,9 @@ export default function RootLayout({
         <div className="vignette" aria-hidden="true" />
 
         <WaitlistProvider>
-          <div className="relative z-10 flex flex-1 flex-col">{children}</div>
+          <AuthProvider>
+            <div className="relative z-10 flex flex-1 flex-col">{children}</div>
+          </AuthProvider>
         </WaitlistProvider>
       </body>
     </html>

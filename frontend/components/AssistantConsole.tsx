@@ -361,9 +361,9 @@ export default function AssistantConsole() {
             <span className="text-sm font-extrabold tracking-tight">vaidy</span>
           </Link>
           <div className="flex items-center gap-2.5 text-[11px] text-white/50">
-            <button type="button" onClick={processInput} disabled={isProcessing} className="hidden rounded-lg border border-white/[0.09] px-2.5 py-1.5 font-semibold text-white/70 transition hover:border-[#00d97e]/40 hover:text-white disabled:opacity-45 sm:inline-flex">
-              {isProcessing ? "Processing..." : "Process input"}
-            </button>
+            <Link href="/dashboard" className="hidden rounded-lg border border-white/[0.09] px-2.5 py-1.5 font-semibold text-white/70 transition hover:border-[#00d97e]/40 hover:text-white sm:inline-flex">
+              Dashboard
+            </Link>
             <div className="hidden rounded-lg border border-white/[0.08] bg-white/[0.035] p-0.5 sm:flex">
               {languageOptions.map((o) => (
                 <button key={o.value} type="button" onClick={() => selectLanguage(o.value)} className={`rounded-md px-2 py-1 font-semibold transition ${languagePreference === o.value ? "bg-[#00d97e] text-[#03120a]" : "text-white/50 hover:text-white"}`}>{o.label}</button>
