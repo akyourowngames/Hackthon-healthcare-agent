@@ -4,6 +4,7 @@
 
 /* ─── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
+  --font-dm-sans: "DM Sans", "SF Pro Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --background: #04050a;
   --foreground: #ffffff;
   --surface: #060810;
@@ -61,27 +62,13 @@
 }
 
 @keyframes stream-token-in {
-  0% {
-    opacity: 0;
-    filter: blur(2px);
-    transform: translateY(3px);
-  }
-  100% {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(0);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes stream-caret-fade {
-  0%, 100% {
-    opacity: 0.22;
-    transform: translateY(2px) scaleY(0.75);
-  }
-  45% {
-    opacity: 1;
-    transform: translateY(0) scaleY(1);
-  }
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
 }
 
 /* ─── Smooth scroll & custom scrollbar ─────────────────────────────────── */
@@ -314,20 +301,17 @@ body::before {
 }
 
 .stream-token {
-  display: inline-block;
-  animation: stream-token-in 180ms ease-out both;
-  transform-origin: 50% 70%;
-  will-change: opacity, filter, transform;
+  display: inline;
 }
 
 .stream-caret {
   display: inline-block;
-  width: 0.42em;
-  height: 1.1em;
-  margin-left: 0.12em;
+  width: 0.4em;
+  height: 1em;
+  margin-left: 0.1em;
   border-radius: 9999px;
   background: #00d97e;
-  box-shadow: 0 0 18px rgba(0, 217, 126, 0.45);
-  vertical-align: -0.15em;
-  animation: stream-caret-fade 900ms ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(0, 217, 126, 0.4);
+  vertical-align: -0.1em;
+  animation: stream-caret-fade 800ms ease-in-out infinite;
 }

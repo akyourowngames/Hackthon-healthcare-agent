@@ -65,10 +65,26 @@ The same behavior is also available as explicit commands:
 python -m healthcare_agent.cli status
 python -m healthcare_agent.cli process-input --local-only
 python -m healthcare_agent.cli ingest samples/report1.pdf --local-only
+python -m healthcare_agent.cli import-json outputs/Z615.json --source-path C:\Users\anime\Downloads\Z615.pdf
+python -m healthcare_agent.cli dedupe
 python -m healthcare_agent.cli list
 python -m healthcare_agent.cli search cholesterol
 python -m healthcare_agent.cli ask "what biomarkers are high or low"
+python -m healthcare_agent.cli ask "hi" --language hi
 ```
+
+Fast inventory, latest-patient, latest-report-name, upload-help, and greeting
+answers are handled locally through phrases in
+`healthcare_agent/agent_commands.md`. CLI and web chat therefore read the same
+SQLite-backed report memory and do not wait on a model for those common turns.
+Standalone extraction also stores successful reports into the same agent
+database by default:
+
+```powershell
+python -m extractor.main C:\Users\anime\Downloads\Z615.pdf
+```
+
+Use `--no-agent-store` when you only want extraction artifacts.
 
 ## API Server
 
@@ -82,17 +98,72 @@ The server defaults to `http://127.0.0.1:8000` and exposes:
 
 - `GET /api/health`
 - `GET /api/status`
+- `GET /api/supabase/status`
 - `POST /api/process-input`
+- `POST /api/upload`
+- `GET /api/upload/progress/{job_id}`
 - `GET /api/reports`
 - `GET /api/reports/{report_id}`
+- `GET /api/dashboard/{user_id}`
+- `GET /api/biomarker/{user_id}/{biomarker_name}`
+- `GET /api/notifications/{user_id}`
 - `GET /api/search?q=cholesterol`
 - `POST /api/chat`
 - `POST /api/chat/stream`
+- `POST /api/share`
+- `GET /api/share/{token}`
 
 The streaming chat endpoint sends server-sent events with `meta`, `chunk`,
 `done`, `error`, and `ping` events. Host, port, CORS origins, warmup, and
 keepalive settings live in `healthcare_agent/api_policy.md`, with `.env`
 overrides for local machines.
+
+## Supabase
+
+Vaidy stays local-first. Supabase is optional and mirrors the local SQLite data
+when enabled. Apply `supabase/schema.sql` in Supabase SQL editor, then set:
+
+```powershell
+VAIDY_SUPABASE_ENABLED=true
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+The service role key is for the backend only. The frontend uses the public anon
+key for email/password and Google auth. When Supabase is not configured, the app
+uses the `local-user` identity from `healthcare_agent/agent_policy.md` so CLI
+and web still share the same reports.
+
+For email notifications, deploy
+`supabase/functions/send-report-notification` and set `RESEND_API_KEY`,
+`RESEND_FROM_EMAIL`, and `VAIDY_APP_URL` as Supabase secrets. The function can
+send a queued `notification_outbox` row or an explicit notification payload
+through Resend.
+
+## Product Surfaces
+
+Saved reports now populate local `biomarker_history`, regenerate
+`anomaly_findings`, queue local notification summaries, and power the dashboard
+and doctor-share APIs. The anomaly engine detects consistent 3-report trends,
+personal baseline breaches, and first-time abnormal readings from local SQLite
+history. Knobs for thresholds, score penalties, share expiry, language, and
+memory summarization live in `healthcare_agent/agent_policy.md`.
+
+The browser app includes:
+
+- `/auth` for Supabase email/password, Google OAuth, or the local development
+  identity when Supabase environment variables are absent.
+- `/dashboard` for upload progress, health score, anomaly cards, trend charts,
+  and doctor-share link creation.
+- `/share/[token]` for a clean read-only doctor view.
+- `/chat` with English, Hindi, and auto language preference plus a working
+  folder upload button for PDF, JSON, TXT, and MD files.
+
+Demo JSON reports live in `samples/demo_reports/`. Verified demo runs produce
+dashboard, share, notification, and Markdown summary artifacts under
+`output/demo-verification-<timestamp>/`.
 
 Embedding order is local first:
 

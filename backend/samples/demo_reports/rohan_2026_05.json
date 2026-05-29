@@ -1,0 +1,26 @@
+{
+  "patient_name": "Rohan Iyer",
+  "report_date": "01-05-2026",
+  "lab_name": "Bharat Health Lab",
+  "report_status": "final",
+  "biomarkers": {
+    "tsh": {
+      "value": 3.8,
+      "unit": "uIU/mL",
+      "ref_range": "0.4-4.5",
+      "flag": "HIGH"
+    },
+    "hemoglobin": {
+      "value": 12.2,
+      "unit": "g/dL",
+      "ref_range": "13-17",
+      "flag": "LOW"
+    },
+    "triglycerides": {
+      "value": 210.0,
+      "unit": "mg/dL",
+      "ref_range": "0-150",
+      "flag": "HIGH"
+    }
+  }
+}

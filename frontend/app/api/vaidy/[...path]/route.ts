@@ -73,7 +73,8 @@ async function proxyToVaidy(request: NextRequest, context: RouteContext) {
   }
 
   const target = makeTargetUrl(request, path);
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
+  const body =
+    request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer();
 
   try {
     const response = await fetch(target, {

@@ -1,28 +1,41 @@
-.DS_Store
-Thumbs.db
+# Secrets & environment
+.env
+.env.local
+.env.*.local
 
-# IDE
-.vscode/
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
 
 # Node
-**/node_modules/
-
-# Next.js
-**/.next/
-**/out/
-**/.vercel/
-
-# Env
-.env*
-!.env.example
-!**/.env.example
-
-# Turbopack/TypeScript caches
+node_modules/
+.next/
 *.tsbuildinfo
 
+# Data / dump folders (keep only .gitkeep placeholders)
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Storage — DB, model weights, cached embeddings
+storage/*
+!storage/.gitkeep
+
+# PDF sample reports (binary blobs, not source)
+samples/*.pdf
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp

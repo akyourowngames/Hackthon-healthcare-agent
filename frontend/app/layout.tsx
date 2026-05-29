@@ -1,13 +1,6 @@
 import type { Metadata } from "next";
-import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import { WaitlistProvider } from "@/components/WaitlistProvider";
-
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-});
 
 const SITE_URL = "https://vaidy.vercel.app";
 const SITE_TITLE = "Vaidy — Your AI Health Copilot, Built for India";
@@ -73,10 +66,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${dmSans.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <div className="page-light" aria-hidden="true" />
         <div className="vignette" aria-hidden="true" />

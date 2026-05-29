@@ -1,118 +1,177 @@
-# Vaidy
+# Vaidy Backend
 
-> Your AI Health Copilot, Built for India.
+Local-first AI healthcare backend for Indian lab reports.
 
-Vaidy reads blood reports from Apollo, Thyrocare, Lal Path Labs, Dr. Lal and
-50+ other labs, detects trends across your biomarkers, and explains everything
-in plain Hindi or English without jargon or chatbot guesswork.
+## Setup
 
-Live: [vaidy.vercel.app](https://vaidy.vercel.app)
-
----
-
-## What Vaidy does
-
-- Reads many health document formats: PDFs, images, prescriptions, blood tests, MRIs, and echoes
-- Builds a searchable health record across time
-- Explains results in plain English or Hindi
-- Spots biomarker trends across months and years
-- Lets users ask natural questions about their health history
-- Focuses on Indian lab formats, reference ranges, diets, and context
-
-## Repository layout
-
-```text
-Vaidy/
-|-- frontend/        Next.js 14 landing site and waitlist
-`-- backend/         Python report parsing and biomarker extraction pipeline
-```
-
-## Frontend
-
-The marketing site is a Next.js 14 App Router project styled with Tailwind CSS
-and animated with Framer Motion.
-
-### Tech stack
-
-- [Next.js 14](https://nextjs.org) App Router
-- React 18 and TypeScript
-- Tailwind CSS
-- Framer Motion
-- Vercel deployment
-
-### Pages
-
-- `/` landing page
-- `/contact`
-- `/privacy`
-- `/terms`
-
-### Getting started
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to view the site.
-
-### Scripts
-
-| Command         | What it does                  |
-| --------------- | ----------------------------- |
-| `npm run dev`   | Start the dev server          |
-| `npm run build` | Production build              |
-| `npm run start` | Run the production build      |
-| `npm run lint`  | Lint with `eslint-config-next` |
-
-## Backend
-
-The backend extracts structured biomarkers from Indian lab reports, saves
-validated JSON output, and provides a terminal healthcare-agent CLI with local
-SQLite report memory. Runtime model, timeout, retry, page-filter, and image
-DPI settings are controlled through `backend/extractor/extraction_policy.md`.
-Agent storage and embeddings are controlled through
-`backend/healthcare_agent/agent_policy.md`.
-
-```bash
-cd backend
+```powershell
 python -m pip install -r requirements.txt
-cp .env.example .env
-python healthcare_agent/cli.py
+Copy-Item .env.example .env
 ```
 
-Set `NVIDIA_API_KEY` in `backend/.env` for NIM extraction. Without it, use
-`--local-only` to verify local text and OCR fallbacks.
+Set `NVIDIA_API_KEY` in `.env`, then run:
 
-```bash
-python -m pytest -q
+```powershell
+python -m extractor.main samples/report1.pdf
+```
+
+## Extractor
+
+The extraction pipeline saves:
+
+- `output/<pdf-name>/debug_text.txt` for the best local text layer found.
+- `output/<pdf-name>/debug_quality.json` for the text quality gate.
+- `output/<pdf-name>/<pdf-name>.json` for the clean validated report.
+- `output/<pdf-name>/report.json` as the latest report path for that run.
+
+## Extraction Order
+
+1. Extract the local PyMuPDF text layer per page for fast page triage.
+2. Convert the PDF to page images with the DPI from `extractor/extraction_policy.md`.
+3. Send only locally relevant pages to NVIDIA NIM for structured JSON; scanned PDFs with no text layer still go through image extraction.
+4. Retry NIM image calls using the retry settings in `extractor/extraction_policy.md`.
+5. Fill missing fields from local text when Docling or PyMuPDF text is usable.
+6. Fall back to PaddleOCR plus rule-based parsing when the text layer is poor.
+7. Normalize biomarker names from `extractor/biomarker_aliases.md`.
+8. Validate output with Pydantic before saving.
+
+The default NIM model, timeout, retry counts, page-filter thresholds, and image
+DPI live in `extractor/extraction_policy.md`. The default model is a smaller
+available NVIDIA vision model so ordinary reports do not start on Maverick.
+Environment variables in `.env` can override NIM provider settings for one
+machine without changing code.
+
+## Terminal Healthcare Agent
+
+The terminal agent stores reports and retrieval chunks in a local SQLite
+database by default. It does not require Supabase.
+
+```powershell
+python healthcare_agent\cli.py
+```
+
+When the shell opens, put report files in `input/` and type `process input`.
+Supported files are configured in `healthcare_agent/agent_policy.md`; the
+default set is PDF, JSON, TXT, and MD. Extraction artifacts are written to
+`output/`, while searchable report memory lives in local SQLite. Normal chat
+streams token-by-token from the configured NVIDIA chat model. Maverick remains
+configured as the deep model, while the default fast lane uses
+`meta/llama-3.1-8b-instruct` for low-latency casual and report answers.
+Report evidence is attached only for report/document questions.
+
+The same behavior is also available as explicit commands:
+
+```powershell
+python -m healthcare_agent.cli status
 python -m healthcare_agent.cli process-input --local-only
-python -m extractor.main samples/report1.pdf --local-only --output-dir output/report1
 python -m healthcare_agent.cli ingest samples/report1.pdf --local-only
+python -m healthcare_agent.cli import-json outputs/Z615.json --source-path C:\Users\anime\Downloads\Z615.pdf
+python -m healthcare_agent.cli dedupe
+python -m healthcare_agent.cli list
+python -m healthcare_agent.cli search cholesterol
 python -m healthcare_agent.cli ask "what biomarkers are high or low"
+python -m healthcare_agent.cli ask "hi" --language hi
 ```
 
-For the terminal agent flow, place reports or documents in `backend/input/`,
-type `process input`, and read back the saved local memory with `list reports`,
-`show report <id>`, search, or normal questions. Artifacts are written under
-`backend/output/`. Normal chat streams from the configured NVIDIA chat model.
-Maverick remains available as the deep model, while the default fast lane uses
-`meta/llama-3.1-8b-instruct` for smoother casual and report answers.
+Fast inventory, latest-patient, latest-report-name, upload-help, and greeting
+answers are handled locally through phrases in
+`healthcare_agent/agent_commands.md`. CLI and web chat therefore read the same
+SQLite-backed report memory and do not wait on a model for those common turns.
+Standalone extraction also stores successful reports into the same agent
+database by default:
 
-## Roadmap
+```powershell
+python -m extractor.main C:\Users\anime\Downloads\Z615.pdf
+```
 
-- Report upload plus biomarker extraction pipeline
-- Multilingual explanations, Hindi first and then regional languages
-- Longitudinal trend dashboard
-- Doctor-share view with one-link summaries
+Use `--no-agent-store` when you only want extraction artifacts.
 
-## Contributing
+## API Server
 
-The codebase is small and friendly. Open an issue or PR if you spot a bug, a
-typo, or have an idea. For feature work, please start a discussion first so we
-can align on scope.
+Run the same local agent behind an HTTP API:
 
-## License
+```powershell
+python -m healthcare_agent.api
+```
 
-TBD. Until then, all rights reserved by the Vaidy team.
+The server defaults to `http://127.0.0.1:8000` and exposes:
+
+- `GET /api/health`
+- `GET /api/status`
+- `GET /api/supabase/status`
+- `POST /api/process-input`
+- `POST /api/upload`
+- `GET /api/upload/progress/{job_id}`
+- `GET /api/reports`
+- `GET /api/reports/{report_id}`
+- `GET /api/dashboard/{user_id}`
+- `GET /api/biomarker/{user_id}/{biomarker_name}`
+- `GET /api/notifications/{user_id}`
+- `GET /api/search?q=cholesterol`
+- `POST /api/chat`
+- `POST /api/chat/stream`
+- `POST /api/share`
+- `GET /api/share/{token}`
+
+The streaming chat endpoint sends server-sent events with `meta`, `chunk`,
+`done`, `error`, and `ping` events. Host, port, CORS origins, warmup, and
+keepalive settings live in `healthcare_agent/api_policy.md`, with `.env`
+overrides for local machines.
+
+## Supabase
+
+Vaidy stays local-first. Supabase is optional and mirrors the local SQLite data
+when enabled. Apply `supabase/schema.sql` in Supabase SQL editor, then set:
+
+```powershell
+VAIDY_SUPABASE_ENABLED=true
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+The service role key is for the backend only. The frontend uses the public anon
+key for email/password and Google auth. When Supabase is not configured, the app
+uses the `local-user` identity from `healthcare_agent/agent_policy.md` so CLI
+and web still share the same reports.
+
+For email notifications, deploy
+`supabase/functions/send-report-notification` and set `RESEND_API_KEY`,
+`RESEND_FROM_EMAIL`, and `VAIDY_APP_URL` as Supabase secrets. The function can
+send a queued `notification_outbox` row or an explicit notification payload
+through Resend.
+
+## Product Surfaces
+
+Saved reports now populate local `biomarker_history`, regenerate
+`anomaly_findings`, queue local notification summaries, and power the dashboard
+and doctor-share APIs. The anomaly engine detects consistent 3-report trends,
+personal baseline breaches, and first-time abnormal readings from local SQLite
+history. Knobs for thresholds, score penalties, share expiry, language, and
+memory summarization live in `healthcare_agent/agent_policy.md`.
+
+The browser app includes:
+
+- `/auth` for Supabase email/password, Google OAuth, or the local development
+  identity when Supabase environment variables are absent.
+- `/dashboard` for upload progress, health score, anomaly cards, trend charts,
+  and doctor-share link creation.
+- `/share/[token]` for a clean read-only doctor view.
+- `/chat` with English, Hindi, and auto language preference plus a working
+  folder upload button for PDF, JSON, TXT, and MD files.
+
+Demo JSON reports live in `samples/demo_reports/`. Verified demo runs produce
+dashboard, share, notification, and Markdown summary artifacts under
+`output/demo-verification-<timestamp>/`.
+
+Embedding order is local first:
+
+1. ONNX-packaged model from `healthcare_agent/agent_policy.md`.
+2. NVIDIA embedding API fallback when the local ONNX path is unavailable and `NVIDIA_API_KEY` is configured.
+3. Local hash vectors as the final offline fallback so the CLI remains usable.
+
+Agent input, output, storage, ONNX model, chat models, streaming, warmup, cache
+path, embedding dimension, and search limits live in
+`healthcare_agent/agent_policy.md`, with `.env` overrides for local machine
+settings.

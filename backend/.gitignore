@@ -1,13 +1,41 @@
+# Secrets & environment
 .env
+.env.local
+.env.*.local
+
+# Python
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
+
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Data / dump folders (keep only .gitkeep placeholders)
 input/*
 !input/.gitkeep
 output/*
 !output/.gitkeep
 outputs/*
 !outputs/.gitkeep
+
+# Storage — DB, model weights, cached embeddings
 storage/*
 !storage/.gitkeep
+
+# PDF sample reports (binary blobs, not source)
+samples/*.pdf
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
