@@ -58,20 +58,19 @@ def upload_file_to_storage(
         base_url = active_settings.supabase_url.rstrip("/")
         safe_user = user_id.replace("/", "_").replace("\\", "_")
         storage_path = f"{safe_user}/{file_path.name}"
-        bucket_name = "User Data"
-        encoded_bucket = urllib.parse.quote(bucket_name)
-        encoded_path = urllib.parse.quote(storage_path)
-        url = f"{base_url}/storage/v1/object/{encoded_bucket}/{encoded_path}"
+        # Supabase Storage REST API: bucket name with space needs URL encoding
+        url = f"{base_url}/storage/v1/object/User%20Data/{urllib.parse.quote(storage_path)}"
         content = file_path.read_bytes()
         content_type = _guess_content_type(file_path.suffix.lower())
         request = urllib.request.Request(url, data=content, method="POST")
         request.add_header("Authorization", f"Bearer {active_settings.supabase_service_role_key}")
+        request.add_header("apikey", active_settings.supabase_service_role_key)
         request.add_header("Content-Type", content_type)
         request.add_header("x-upsert", "true")
         with urllib.request.urlopen(request, timeout=active_settings.supabase_timeout_seconds) as response:
             if response.status >= 400:
                 raise RuntimeError(f"Storage upload failed with {response.status}")
-        public_url = f"{base_url}/storage/v1/object/public/{encoded_bucket}/{encoded_path}"
+        public_url = f"{base_url}/storage/v1/object/public/User%20Data/{urllib.parse.quote(storage_path)}"
         return {"uploaded": True, "path": storage_path, "public_url": public_url}
     except Exception as exc:
         _write_sync_error(active_settings, 0, exc)
