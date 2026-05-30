@@ -442,3 +442,49 @@ https://nextjs.org/docs/messages/module-not-found
 Module not found: Can't resolve 'C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\client\components\not-found-boundary.js'
 
 https://nextjs.org/docs/messages/module-not-found
+Error: ENOENT: no such file or directory, scandir 'C:\Users\anime\Documents\Vaidy\frontend\app'
+    at async Object.readdir (node:internal/fs/promises:955:18)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\lib\recursive-readdir.js:39:29
+    at async Promise.all (index 0)
+    at async recursiveReadDir (C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\lib\recursive-readdir.js:32:25)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:71:25
+    at async Promise.all (index 0)
+    at async BatchedFileReader.load (C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:67:25)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:41:26 {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'scandir',
+  path: 'C:\\Users\\anime\\Documents\\Vaidy\\frontend\\app'
+}
+ ⨯ unhandledRejection: Error: ENOENT: no such file or directory, scandir 'C:\Users\anime\Documents\Vaidy\frontend\app'
+    at async Object.readdir (node:internal/fs/promises:955:18)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\lib\recursive-readdir.js:39:29
+    at async Promise.all (index 0)
+    at async recursiveReadDir (C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\lib\recursive-readdir.js:32:25)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:71:25
+    at async Promise.all (index 0)
+    at async BatchedFileReader.load (C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:67:25)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:41:26 {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'scandir',
+  path: 'C:\\Users\\anime\\Documents\\Vaidy\\frontend\\app'
+}
+ ⨯ unhandledRejection: Error: ENOENT: no such file or directory, scandir 'C:\Users\anime\Documents\Vaidy\frontend\app'
+    at async Object.readdir (node:internal/fs/promises:955:18)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\lib\recursive-readdir.js:39:29
+    at async Promise.all (index 0)
+    at async recursiveReadDir (C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\lib\recursive-readdir.js:32:25)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:71:25
+    at async Promise.all (index 0)
+    at async BatchedFileReader.load (C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:67:25)
+    at async C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\server\future\route-matcher-providers\dev\helpers\file-reader\batched-file-reader.js:41:26 {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'scandir',
+  path: 'C:\\Users\\anime\\Documents\\Vaidy\\frontend\\app'
+}
+ ⨯ ./
+Module not found: Can't resolve 'C:\Users\anime\Documents\Vaidy\frontend\node_modules\next\dist\client\components\not-found-boundary.js'
+
+https://nextjs.org/docs/messages/module-not-found
