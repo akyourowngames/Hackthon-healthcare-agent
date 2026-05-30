@@ -55,17 +55,17 @@ export function Modal({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: sheetOnMobile ? 40 : 12 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className={`relative z-10 w-full ${maxWidth} rounded-t-2xl border border-white/[0.08] bg-[#111118] p-5 shadow-2xl sm:rounded-2xl sm:p-6 ${sheetOnMobile ? "max-h-[92vh] overflow-y-auto" : ""}`}
+            className={`relative z-10 w-full ${maxWidth} rounded-t-2xl border border-border bg-surface p-5 shadow-2xl sm:rounded-xl sm:p-6 ${sheetOnMobile ? "max-h-[92vh] overflow-y-auto" : ""}`}
           >
             {title ? (
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 id="modal-title" className="font-heading text-xl font-bold text-white">
+                <h2 id="modal-title" className="font-heading text-xl font-bold text-primary">
                   {title}
                 </h2>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/5 hover:text-white"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-secondary transition hover:bg-elevated hover:text-primary"
                   aria-label="Close"
                 >
                   <X className="h-5 w-5" />

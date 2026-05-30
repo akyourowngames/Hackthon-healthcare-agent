@@ -10,7 +10,12 @@ from .language import detect_language
 from .store import dashboard_snapshot, list_reports
 
 
-def fast_agent_answer(message: str, settings: AgentSettings, language_preference: str = "auto") -> str:
+def fast_agent_answer(
+    message: str,
+    settings: AgentSettings,
+    language_preference: str = "auto",
+    user_id: str | None = None,
+) -> str:
     command = resolve_fast_command(message)
     if not command:
         return ""
@@ -18,11 +23,11 @@ def fast_agent_answer(message: str, settings: AgentSettings, language_preference
     if command == "quick_reply":
         return _quick_reply(language)
     if command == "report_inventory":
-        return _report_inventory(settings, language)
+        return _report_inventory(settings, language, user_id)
     if command == "latest_patient":
-        return _latest_patient(settings, language)
+        return _latest_patient(settings, language, user_id)
     if command == "latest_report_name":
-        return _latest_report_name(settings, language)
+        return _latest_report_name(settings, language, user_id)
     if command == "extraction_help":
         return _extraction_help(language)
     return ""
@@ -50,15 +55,15 @@ def _load_commands() -> dict[str, list[str]]:
     return commands
 
 
-def _report_inventory(settings: AgentSettings, language: str) -> str:
-    reports = list_reports(settings)
+def _report_inventory(settings: AgentSettings, language: str, user_id: str | None = None) -> str:
+    reports = list_reports(settings, user_id=user_id)
     if not reports:
         return _line(language, "I do not have any stored reports yet.", "Abhi koi stored report nahi hai.")
     lines = [
         _line(
             language,
-            f"I have {len(reports)} stored report(s) in the shared Vaidy agent database:",
-            f"Shared Vaidy agent database me {len(reports)} stored report(s) hain:",
+            f"I have {len(reports)} stored report(s) in your Vaidy account:",
+            f"Aapke Vaidy account me {len(reports)} stored report(s) hain:",
         )
     ]
     for report in reports[:12]:
@@ -66,8 +71,8 @@ def _report_inventory(settings: AgentSettings, language: str) -> str:
     return "\n".join(lines)
 
 
-def _latest_patient(settings: AgentSettings, language: str) -> str:
-    report = _latest_report(settings)
+def _latest_patient(settings: AgentSettings, language: str, user_id: str | None = None) -> str:
+    report = _latest_report(settings, user_id)
     if report is None:
         return _line(language, "I do not have a stored report to read from yet.", "Abhi read karne ke liye stored report nahi hai.")
     patient = str(report.get("patient_name") or "").strip()
@@ -80,8 +85,8 @@ def _latest_patient(settings: AgentSettings, language: str) -> str:
     return _line(language, f"The latest stored report patient name is {patient}.", f"Latest stored report ka patient name {patient} hai.")
 
 
-def _latest_report_name(settings: AgentSettings, language: str) -> str:
-    report = _latest_report(settings)
+def _latest_report_name(settings: AgentSettings, language: str, user_id: str | None = None) -> str:
+    report = _latest_report(settings, user_id)
     if report is None:
         return _line(language, "I do not have a stored report yet.", "Abhi koi stored report nahi hai.")
     source = Path(str(report.get("source_path") or "")).name
@@ -107,13 +112,13 @@ def _extraction_help(language: str) -> str:
 def _quick_reply(language: str) -> str:
     return _line(
         language,
-        "Hi. I am ready, and I can use the same stored reports from CLI and web.",
-        "Hi. Main ready hoon, aur CLI aur web dono me same stored reports use kar sakta hoon.",
+        "Hi. I am ready, and I will use reports and memory scoped to your Vaidy account.",
+        "Hi. Main ready hoon, aur aapke Vaidy account ke reports aur memory hi use karunga.",
     )
 
 
-def _latest_report(settings: AgentSettings) -> dict[str, Any] | None:
-    reports = list_reports(settings)
+def _latest_report(settings: AgentSettings, user_id: str | None = None) -> dict[str, Any] | None:
+    reports = list_reports(settings, user_id=user_id)
     return reports[0] if reports else None
 
 

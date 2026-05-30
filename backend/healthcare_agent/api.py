@@ -37,6 +37,7 @@ from .store import (
     biomarker_detail,
     create_share_link,
     dashboard_snapshot,
+    deduplicate_reports,
     get_report,
     get_share_summary,
     initialize_database,
@@ -82,6 +83,7 @@ class ChatRequest(BaseModel):
     force_report_context: bool = False
     session_id: str = ""
     language_preference: str = "auto"
+    user_id: str = ""
 
 
 class ProcessInputRequest(BaseModel):
@@ -94,6 +96,7 @@ class RememberRequest(BaseModel):
     source: str = "manual"
     session_id: str = ""
     importance: float | None = None
+    user_id: str = ""
 
 
 class ShareRequest(BaseModel):
@@ -145,9 +148,9 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/status")
-    def status(session_id: str = "") -> dict[str, Any]:
+    def status(session_id: str = "", user_id: str = "") -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
-        reports = list_reports(settings)
+        reports = list_reports(settings, user_id=user_id if user_id else None)
         fresh = fresh_session_report(session_id, settings) if session_id else None
         return {
             "ok": True,
@@ -180,17 +183,25 @@ def create_app() -> FastAPI:
         return serialize_process_summary(summary)
 
     @app.get("/api/reports")
-    def reports() -> dict[str, Any]:
+    def reports(user_id: str = "") -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
-        return {"reports": list_reports(settings)}
+        return {"reports": list_reports(settings, user_id=user_id if user_id else None)}
 
     @app.get("/api/reports/{report_id}")
-    def report(report_id: int) -> dict[str, Any]:
+    def report(report_id: int, user_id: str = "") -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
         record = get_report(report_id, settings)
         if record is None:
             raise HTTPException(status_code=404, detail="Report not found")
+        safe_user_id = str(user_id or "").strip()
+        if safe_user_id and str(record.get("user_id") or "") != safe_user_id:
+            raise HTTPException(status_code=404, detail="Report not found")
         return record
+
+    @app.post("/api/reports/deduplicate")
+    def deduplicate() -> dict[str, Any]:
+        settings: AgentSettings = app.state.agent_settings
+        return deduplicate_reports(settings)
 
     @app.get("/api/dashboard/{user_id}")
     def dashboard(user_id: str) -> dict[str, Any]:
@@ -208,9 +219,9 @@ def create_app() -> FastAPI:
         return {"notifications": list_notifications(user_id, settings)}
 
     @app.get("/api/search")
-    def search(q: str = Query(min_length=1), limit: int | None = None) -> dict[str, Any]:
+    def search(q: str = Query(min_length=1), limit: int | None = None, user_id: str = "") -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
-        hits = search_reports(q, limit=limit, settings=settings)
+        hits = search_reports(q, limit=limit, settings=settings, user_id=user_id if user_id else None)
         return {"hits": [serialize_hit(hit) for hit in hits]}
 
     @app.post("/api/chat")
@@ -223,6 +234,7 @@ def create_app() -> FastAPI:
             force_report_context=request.force_report_context,
             session_id=request.session_id,
             language_preference=request.language_preference,
+            user_id=request.user_id,
         )
         return serialize_chat_result(result)
 
@@ -238,18 +250,19 @@ def create_app() -> FastAPI:
         return memory_assessment(settings)
 
     @app.get("/api/memory")
-    def memory_list(limit: int = 50) -> dict[str, Any]:
+    def memory_list(limit: int = 50, user_id: str = "") -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
-        return {"entries": list_memory_entries(limit, settings)}
+        return {"entries": list_memory_entries(limit, settings, user_id=user_id)}
 
     @app.get("/api/memory/recall")
     def memory_recall(
         q: str = Query(min_length=1),
         session_id: str = "",
         limit: int | None = None,
+        user_id: str = "",
     ) -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
-        hits = recall_memories(q, session_id=session_id, limit=limit, settings=settings)
+        hits = recall_memories(q, session_id=session_id, limit=limit, settings=settings, user_id=user_id)
         return {"hits": [serialize_memory_hit(hit) for hit in hits]}
 
     @app.post("/api/memory/remember")
@@ -261,6 +274,7 @@ def create_app() -> FastAPI:
             session_id=request.session_id,
             importance=request.importance,
             settings=settings,
+            user_id=request.user_id,
         )
         return result
 
@@ -339,6 +353,25 @@ def create_app() -> FastAPI:
         settings: AgentSettings = app.state.agent_settings
         return {"messages": recent_session_messages(session_id, limit=limit, settings=settings)}
 
+    @app.post("/api/sessions/{session_id}/attach-report")
+    async def attach_report(session_id: str, request: Request) -> dict[str, Any]:
+        settings: AgentSettings = app.state.agent_settings
+        body = await request.json()
+        report_id = int(body.get("report_id") or 0)
+        if report_id <= 0:
+            raise HTTPException(status_code=400, detail="report_id is required")
+        record = get_report(report_id, settings)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Report not found")
+        result = bind_session_to_report(session_id, report_id, settings)
+        fresh = fresh_session_report(session_id, settings)
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "fresh_upload": fresh,
+            "report": record,
+        }
+
     return app
 
 
@@ -349,7 +382,7 @@ def stream_chat_response(
 ) -> Iterable[str]:
     events: queue.Queue[dict[str, Any]] = queue.Queue()
     history = clean_history(request.history)
-    session_id = ensure_session(request.session_id, settings) if settings.memory_enabled else request.session_id.strip()
+    session_id = ensure_session(request.session_id, settings, user_id=request.user_id) if settings.memory_enabled else request.session_id.strip()
 
     def publish(event: str, payload: dict[str, Any]) -> None:
         events.put({"event": event, "payload": payload})
@@ -367,6 +400,7 @@ def stream_chat_response(
                 on_chunk=on_chunk,
                 session_id=session_id,
                 language_preference=request.language_preference,
+                user_id=request.user_id,
             )
             publish("done", serialize_chat_result(result))
         except Exception as exc:
@@ -536,7 +570,7 @@ def _start_upload_job(
             report_id = result.get("report_id")
             if isinstance(report_id, int) and session_id and settings.memory_enabled:
                 bind_session_to_report(session_id, int(report_id), settings)
-                _store_upload_memory(session_id, result, settings)
+                _store_upload_memory(session_id, result, settings, user_id=user_id)
             # Upload file to Supabase Storage bucket
             upload_file_to_storage_async(path, user_id or settings.default_user_id, settings)
             job.result = result
@@ -552,7 +586,7 @@ def _start_upload_job(
     return job
 
 
-def _store_upload_memory(session_id: str, result: dict[str, Any], settings: AgentSettings) -> None:
+def _store_upload_memory(session_id: str, result: dict[str, Any], settings: AgentSettings, user_id: str = "") -> None:
     text_parts: list[str] = ["The user just uploaded a new health document via Vaidy chat."]
     label = str(result.get("file_label") or "").strip()
     if label:
@@ -599,6 +633,7 @@ def _store_upload_memory(session_id: str, result: dict[str, Any], settings: Agen
         session_id=session_id,
         importance=float(settings.fresh_upload_importance),
         settings=settings,
+        user_id=user_id,
     )
 
 

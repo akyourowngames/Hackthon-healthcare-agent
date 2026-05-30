@@ -40,17 +40,20 @@ def chat_response(
     force_report_context: bool = False,
     on_chunk=None,
     session_id: str | None = None,
+    user_id: str | None = None,
     language_preference: str = "auto",
+    profile: dict[str, Any] | None = None,
 ) -> ChatResult:
     active_settings = settings or load_agent_settings()
-    active_session_id = ensure_session(session_id, active_settings) if active_settings.memory_enabled else ""
-    fresh_report = _resolve_fresh_report(active_session_id, active_settings)
+    active_user_id = str(user_id or active_settings.default_user_id).strip() or active_settings.default_user_id
+    active_session_id = ensure_session(session_id, active_settings, user_id=active_user_id) if active_settings.memory_enabled else ""
+    fresh_report = _resolve_fresh_report(active_session_id, active_settings, active_user_id)
     if not fresh_report:
-        fast_answer = fast_agent_answer(message, active_settings, language_preference)
+        fast_answer = fast_agent_answer(message, active_settings, language_preference, user_id=active_user_id)
         if fast_answer:
             if active_session_id:
-                save_chat_message(active_session_id, "user", message, active_settings)
-                save_chat_message(active_session_id, "assistant", fast_answer, active_settings)
+                save_chat_message(active_session_id, "user", message, active_settings, user_id=active_user_id)
+                save_chat_message(active_session_id, "assistant", fast_answer, active_settings, user_id=active_user_id)
             return ChatResult(
                 text=fast_answer,
                 used_report_context=True,
@@ -64,7 +67,7 @@ def chat_response(
     memory_payload: dict[str, object] = {"context": "", "hits": [], "history_messages": []}
     conversation_history = history or []
     if active_settings.memory_enabled:
-        memory_payload = memory_context(message, active_session_id, active_settings)
+        memory_payload = memory_context(message, active_session_id, active_settings, user_id=active_user_id)
         saved_history = memory_payload.get("history_messages")
         if isinstance(saved_history, list) and saved_history:
             conversation_history = saved_history
@@ -80,11 +83,11 @@ def chat_response(
         health_context_text = health_context_for_query(
             message,
             retrieval_intent if retrieval_intent != "fresh_upload" else "general_health",
-            active_settings.default_user_id,
+            active_user_id,
             active_settings,
         )
         if retrieval_intent in {"report_comparison", "other"} or not health_context_text:
-            evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings)
+            evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings, user_id=active_user_id)
     memory_context_text = str(memory_payload.get("context") or "")
     language = detect_language(message, language_preference)
     fresh_block = _format_fresh_report_block(fresh_report, active_settings) if fresh_report else ""
@@ -98,6 +101,7 @@ def chat_response(
         language,
         language_preference,
         fresh_block=fresh_block,
+        profile_context_text=format_profile_context(profile or {}),
     )
     selected_model = select_chat_model(active_settings, use_context)
     text, model = call_chat_model(messages, active_settings, on_chunk=on_chunk, model=selected_model)
@@ -109,10 +113,10 @@ def chat_response(
         if fallback_text:
             text = fallback_text
     if active_session_id and model == "unavailable":
-        save_chat_message(active_session_id, "user", message, active_settings)
-        save_chat_message(active_session_id, "assistant", text, active_settings)
+        save_chat_message(active_session_id, "user", message, active_settings, user_id=active_user_id)
+        save_chat_message(active_session_id, "assistant", text, active_settings, user_id=active_user_id)
     elif active_session_id:
-        remember_turn(active_session_id, message, text, active_settings)
+        remember_turn(active_session_id, message, text, active_settings, user_id=active_user_id)
     return ChatResult(
         text=text,
         used_report_context=bool(evidence or health_context_text or fresh_report),
@@ -159,10 +163,14 @@ def build_chat_messages(
     language: str = "en",
     language_preference: str = "auto",
     fresh_block: str = "",
+    profile_context_text: str = "",
 ) -> list[dict[str, str]]:
     policy = load_chat_policy()
     system_parts = [policy.get("persona", "You are Vaidy, a helpful health assistant.")]
     system_parts.append(language_instruction(language, language_preference))
+    if profile_context_text:
+        system_parts.append("User profile and care preferences from Supabase settings:")
+        system_parts.append(profile_context_text)
     if fresh_block:
         header = policy.get("fresh_upload_header", "A new report is attached to this conversation.")
         system_parts.append(header)
@@ -215,16 +223,46 @@ def local_fallback_answer(
     return ""
 
 
+def format_profile_context(profile: dict[str, Any]) -> str:
+    if not profile:
+        return ""
+    labels = {
+        "full_name": "Name",
+        "email": "Email",
+        "phone": "Phone",
+        "city": "City",
+        "date_of_birth": "Date of birth",
+        "gender": "Gender",
+        "language": "Language preference",
+        "blood_group": "Blood group",
+        "conditions": "Known conditions",
+        "medications": "Current medications",
+    }
+    lines: list[str] = []
+    for key, label in labels.items():
+        value = profile.get(key)
+        if isinstance(value, list):
+            text = ", ".join(str(item).strip() for item in value if str(item).strip())
+        elif isinstance(value, dict):
+            continue
+        else:
+            text = str(value or "").strip()
+        if text:
+            lines.append(f"- {label}: {text}")
+    return "\n".join(lines)
+
+
 def _resolve_fresh_report(
     session_id: str,
     settings: AgentSettings,
+    user_id: str,
 ) -> dict[str, Any] | None:
     if not session_id:
         return None
-    fresh = fresh_session_report(session_id, settings)
+    fresh = fresh_session_report(session_id, settings, user_id=user_id)
     if not fresh:
         return None
-    record = get_report(int(fresh["report_id"]), settings)
+    record = get_report(int(fresh["report_id"]), settings, user_id=user_id)
     if record is None:
         return None
     return {**fresh, "record": record}

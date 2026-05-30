@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { LegalPageLayout } from "@/components/LegalPageLayout";
 
 export const metadata: Metadata = {
   title: {
@@ -19,12 +21,18 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
-    <main className="section-shell">
-      <p className="vaidy-pill">Contact</p>
+    <LegalPageLayout>
+      <Link
+        href="/"
+        className="inline-flex text-sm font-semibold text-accent transition hover:text-accent-secondary"
+      >
+        &larr; Back to Vaidy
+      </Link>
+      <p className="vaidy-pill mt-8">Contact</p>
       <h1 className="vaidy-title">Contact placeholder</h1>
       <p className="vaidy-body">
         This page will contain Vaidy&apos;s contact information.
       </p>
-    </main>
+    </LegalPageLayout>
   );
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sqlite3
@@ -54,6 +55,15 @@ def save_report(
     active_settings = settings or load_agent_settings()
     safe_user_id = _safe_user_id(user_id, active_settings)
     initialize_database(active_settings)
+    source_fingerprint = file_fingerprint(source_path)
+    file_duplicate_id = find_report_id_by_source_fingerprint(
+        source_fingerprint["sha256"],
+        source_fingerprint["size"],
+        active_settings,
+        safe_user_id,
+    )
+    if file_duplicate_id is not None:
+        return file_duplicate_id
     duplicate_id = find_duplicate_report_id(payload, active_settings, safe_user_id)
     if duplicate_id is not None:
         return duplicate_id
@@ -68,15 +78,17 @@ def save_report(
         cursor = connection.execute(
             """
             INSERT INTO reports (
-                user_id, source_path, output_path, stored_json_path, patient_name,
+                user_id, source_path, source_sha256, source_size, output_path, stored_json_path, patient_name,
                 report_date, lab_name, report_status, biomarker_count,
                 report_json, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 safe_user_id,
                 source,
+                source_fingerprint["sha256"],
+                source_fingerprint["size"],
                 output,
                 "",
                 str(payload.get("patient_name") or ""),
@@ -208,28 +220,43 @@ def save_document(
     return save_report(payload, resolved, target, settings, user_id=user_id)
 
 
-def list_reports(settings: AgentSettings | None = None) -> list[dict[str, Any]]:
+def list_reports(settings: AgentSettings | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
+    safe_user_id = str(user_id or "").strip()
+    where = ""
+    params: tuple[Any, ...] = ()
+    if safe_user_id:
+        where = "WHERE user_id = ?"
+        params = (safe_user_id,)
     with _connect(active_settings) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT id, user_id, patient_name, report_date, lab_name, report_status,
-                   biomarker_count, source_path, stored_json_path, created_at
+                   biomarker_count, source_path, source_sha256, source_size,
+                   stored_json_path, created_at
             FROM reports
+            {where}
             ORDER BY id DESC
-            """
+            """,
+            params,
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def get_report(report_id: int, settings: AgentSettings | None = None) -> dict[str, Any] | None:
+def get_report(report_id: int, settings: AgentSettings | None = None, user_id: str | None = None) -> dict[str, Any] | None:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
+    safe_user_id = str(user_id or "").strip()
+    where = "id = ?"
+    params: tuple[Any, ...] = (int(report_id),)
+    if safe_user_id:
+        where += " AND user_id = ?"
+        params = (int(report_id), safe_user_id)
     with _connect(active_settings) as connection:
         row = connection.execute(
-            "SELECT * FROM reports WHERE id = ?",
-            (int(report_id),),
+            f"SELECT * FROM reports WHERE {where}",
+            params,
         ).fetchone()
     if row is None:
         return None
@@ -255,10 +282,43 @@ def find_report_id_by_source(source_path: str | Path, settings: AgentSettings | 
     return int(row["id"]) if row is not None else None
 
 
-def search_reports(query: str, limit: int | None = None, settings: AgentSettings | None = None) -> list[SearchHit]:
+def find_report_id_by_source_fingerprint(
+    source_sha256: str,
+    source_size: int,
+    settings: AgentSettings | None = None,
+    user_id: str | None = None,
+) -> int | None:
+    active_settings = settings or load_agent_settings()
+    safe_user_id = _safe_user_id(user_id, active_settings)
+    safe_hash = str(source_sha256 or "").strip()
+    safe_size = int(source_size or 0)
+    if not safe_hash or safe_size <= 0:
+        return None
+    initialize_database(active_settings)
+    with _connect(active_settings) as connection:
+        row = connection.execute(
+            """
+            SELECT id
+            FROM reports
+            WHERE source_sha256 = ? AND source_size = ? AND user_id = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (safe_hash, safe_size, safe_user_id),
+        ).fetchone()
+    return int(row["id"]) if row is not None else None
+
+
+def search_reports(
+    query: str,
+    limit: int | None = None,
+    settings: AgentSettings | None = None,
+    user_id: str | None = None,
+) -> list[SearchHit]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
     safe_limit = max(1, int(limit or active_settings.search_limit))
+    safe_user_id = _safe_user_id(user_id, active_settings)
     query_vector = np.asarray(embed_texts(query, active_settings).vectors, dtype=np.float32).reshape(-1)
     with _connect(active_settings) as connection:
         rows = connection.execute(
@@ -268,7 +328,9 @@ def search_reports(query: str, limit: int | None = None, settings: AgentSettings
                    reports.lab_name
             FROM report_chunks AS chunks
             JOIN reports ON reports.id = chunks.report_id
-            """
+            WHERE reports.user_id = ?
+            """,
+            (safe_user_id,),
         ).fetchall()
     hits: list[SearchHit] = []
     for row in rows:
@@ -384,7 +446,7 @@ def dashboard_snapshot(user_id: str | None = None, settings: AgentSettings | Non
             }
         )
     biomarkers.sort(key=lambda item: str(item.get("name") or ""))
-    reports = list_reports(active_settings)
+    reports = list_reports(active_settings, user_id=safe_user_id)
     return {
         "user_id": safe_user_id,
         "health_score": score,
@@ -447,7 +509,7 @@ def create_share_link(
     safe_user_id = str(user_id or active_settings.default_user_id).strip() or active_settings.default_user_id
     selected_report_ids = [int(value) for value in report_ids or [] if int(value) > 0]
     if not selected_report_ids:
-        reports = list_reports(active_settings)
+        reports = list_reports(active_settings, user_id=safe_user_id)
         if reports:
             selected_report_ids = [int(reports[0]["id"])]
     token = str(uuid.uuid4())
@@ -656,6 +718,20 @@ def copy_source_to_storage(source_path: str | Path, settings: AgentSettings | No
     return target
 
 
+def file_fingerprint(source_path: str | Path) -> dict[str, Any]:
+    source = Path(source_path).expanduser().resolve()
+    if not source.exists() or not source.is_file():
+        return {"sha256": "", "size": 0}
+    digest = hashlib.sha256()
+    with source.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return {"sha256": digest.hexdigest(), "size": int(source.stat().st_size)}
+
+
 def _stored_report_path(settings: AgentSettings, report_id: int, source_path: str | Path) -> Path:
     stem = safe_stem(source_path)
     return settings.reports_dir / f"report_{report_id}_{stem}.json"
@@ -704,6 +780,8 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL DEFAULT '',
             source_path TEXT NOT NULL,
+            source_sha256 TEXT NOT NULL DEFAULT '',
+            source_size INTEGER NOT NULL DEFAULT 0,
             output_path TEXT NOT NULL,
             stored_json_path TEXT NOT NULL,
             patient_name TEXT NOT NULL,
@@ -717,6 +795,8 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         """
     )
     _ensure_column(connection, "reports", "user_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "reports", "source_sha256", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "reports", "source_size", "INTEGER NOT NULL DEFAULT 0")
     connection.execute(
         "UPDATE reports SET user_id = ? WHERE user_id = ''",
         ("local-user",),

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { LegalPageLayout } from "@/components/LegalPageLayout";
 
 export const metadata: Metadata = {
   title: {
@@ -70,17 +71,17 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-12 text-white sm:py-16">
+    <LegalPageLayout>
       <Link
         href="/"
-        className="inline-flex text-sm font-semibold text-emerald-300 transition hover:text-emerald-200"
+        className="inline-flex text-sm font-semibold text-accent transition hover:text-accent-secondary"
       >
         &larr; Back to Vaidy
       </Link>
 
-      <section className="mt-8 rounded-lg border border-amber-300/30 bg-amber-400/10 p-4 text-amber-100">
-        <p className="text-sm font-semibold">Hackathon prototype</p>
-        <p className="mt-2 text-sm leading-6 text-amber-50/85">
+      <section className="mt-8 rounded-xl border border-status-warning/30 bg-status-warning/10 p-4">
+        <p className="text-sm font-semibold text-status-warning">Hackathon prototype</p>
+        <p className="mt-2 text-sm leading-6 text-secondary">
           Vaidy is an early demo built for a hackathon. It can help explain blood
           report values, but it is not a doctor, diagnosis, or replacement for
           medical advice.
@@ -89,13 +90,11 @@ export default function PrivacyPage() {
 
       <header className="mt-10">
         <p className="vaidy-pill">Privacy</p>
-        <h1 className="mt-6 text-4xl font-extrabold leading-tight tracking-normal text-white sm:text-5xl">
-          Privacy Policy
-        </h1>
-        <p className="mt-3 text-sm font-medium text-white/50">
+        <h1 className="vaidy-title">Privacy Policy</h1>
+        <p className="mt-3 text-sm font-medium text-muted">
           Last updated: May 2025
         </p>
-        <p className="mt-6 text-base leading-7 text-white/65">
+        <p className="mt-6 text-base leading-7 text-secondary">
           Vaidy analyzes blood test PDF reports with AI and explains results in a
           chat UI. This page explains what happens to your data in direct,
           practical language.
@@ -105,14 +104,14 @@ export default function PrivacyPage() {
       <div className="mt-10 space-y-9">
         {sections.map((section) => (
           <section key={section.title}>
-            <h2 className="text-xl font-bold tracking-normal text-white">
+            <h2 className="text-xl font-bold tracking-normal text-primary">
               {section.title}
             </h2>
             <div className="mt-3 space-y-3">
               {section.body.map((paragraph) => (
                 <p
                   key={paragraph}
-                  className="text-base leading-7 text-white/65"
+                  className="text-base leading-7 text-secondary"
                 >
                   {paragraph}
                 </p>
@@ -122,35 +121,35 @@ export default function PrivacyPage() {
         ))}
       </div>
 
-      <section className="mt-12 rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <h2 className="text-lg font-bold tracking-normal text-white">
+      <section className="mt-12 rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-lg font-bold tracking-normal text-primary">
           Project details
         </h2>
-        <dl className="mt-4 space-y-3 text-sm leading-6 text-white/65">
+        <dl className="mt-4 space-y-3 text-sm leading-6 text-secondary">
           <div>
-            <dt className="font-semibold text-white">Team</dt>
+            <dt className="font-semibold text-primary">Team</dt>
             <dd>
               Rishab Gautam, Krish Verma, Shaurya Rai, Dasswastika Grover,
               Manvi Balyan
             </dd>
           </div>
           <div>
-            <dt className="font-semibold text-white">Contact</dt>
+            <dt className="font-semibold text-primary">Contact</dt>
             <dd>
               <a
                 href="mailto:risuhfoundry@gmail.com"
-                className="text-emerald-300 transition hover:text-emerald-200"
+                className="text-accent transition hover:text-accent-secondary"
               >
                 risuhfoundry@gmail.com
               </a>
             </dd>
           </div>
           <div>
-            <dt className="font-semibold text-white">GitHub</dt>
+            <dt className="font-semibold text-primary">GitHub</dt>
             <dd>
               <a
                 href="https://github.com/akyourowngames/Hackthon-healthcare-agent"
-                className="break-words text-emerald-300 transition hover:text-emerald-200"
+                className="break-words text-accent transition hover:text-accent-secondary"
                 rel="noreferrer"
                 target="_blank"
               >
@@ -160,20 +159,6 @@ export default function PrivacyPage() {
           </div>
         </dl>
       </section>
-
-      <footer className="mt-12 border-t border-white/10 pt-6">
-        <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-white/55">
-          <Link href="/privacy" className="transition hover:text-white">
-            Privacy
-          </Link>
-          <Link href="/terms" className="transition hover:text-white">
-            Terms
-          </Link>
-          <Link href="/contact" className="transition hover:text-white">
-            Contact
-          </Link>
-        </nav>
-      </footer>
-    </main>
+    </LegalPageLayout>
   );
 }

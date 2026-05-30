@@ -1,0 +1,26 @@
+
+> vaidy@0.1.0 dev
+> next dev -p 3002
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 7.5s
+ ○ Compiling / ...
+ ✓ Compiled / in 35.6s (1519 modules)
+ GET / 200 in 36779ms
+ GET / 200 in 2613ms
+ ○ Compiling /favicon.ico ...
+ ✓ Compiled /favicon.ico in 5.9s (791 modules)
+ GET /favicon.ico 200 in 6426ms
+ ○ Compiling /auth ...
+ ✓ Compiled /auth in 2.2s (1580 modules)
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 32.7s (2564 modules)
+ GET /dashboard 200 in 33946ms
+ ○ Compiling /dashboard/reports ...
+ ✓ Compiled /chat in 86.9s (2575 modules)
+ GET / 200 in 57139ms
+   Reload env: .env

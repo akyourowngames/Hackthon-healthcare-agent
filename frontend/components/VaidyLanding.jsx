@@ -4,10 +4,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 
-const EMERALD = "#00d97e";
-const EMERALD_DIM = "#00a862";
-const TEAL = "#00c4b8";
-const VOID = "#04050a";
+const EMERALD = "#10b981";
+const EMERALD_DIM = "#059669";
+const TEAL = "#34d399";
+const VOID = "#05050a";
 const WAITLIST_STORAGE_KEY = "vaidy_waitlist_submissions";
 const WAITLIST_SUCCESS_MESSAGE = "You're on the list 🎉 We'll notify you when Vaidy launches.";
 
@@ -230,8 +230,8 @@ function WaitlistModal({ open, onClose }) {
                 }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 3v3M21 12h-3M12 21v-3M3 12h3" stroke="#04050a" strokeWidth="2.5" strokeLinecap="round"/>
-                  <circle cx="12" cy="12" r="4" fill="#04050a"/>
+                  <path d="M12 3v3M21 12h-3M12 21v-3M3 12h3" stroke="#05050a" strokeWidth="2.5" strokeLinecap="round"/>
+                  <circle cx="12" cy="12" r="4" fill="#05050a"/>
                 </svg>
               </div>
 
@@ -346,7 +346,7 @@ function WaitlistModal({ open, onClose }) {
                         border: "none",
                         borderRadius: 16,
                         background: `linear-gradient(135deg, ${EMERALD}, ${TEAL})`,
-                        color: "#03120a",
+                        color: "#05050a",
                         cursor: "pointer",
                         padding: "15px 18px",
                         fontSize: 15,
@@ -415,7 +415,7 @@ function Navbar({ scrollY, onOpenWaitlist }) {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: mobile ? "0 16px" : "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <a href="#hero" onClick={(event) => handleNavClick(event, "#hero")} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${EMERALD}, ${TEAL})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v3M21 12h-3M12 21v-3M3 12h3" stroke="#04050a" strokeWidth="2.5" strokeLinecap="round"/><circle cx="12" cy="12" r="4" fill="#04050a"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3v3M21 12h-3M12 21v-3M3 12h3" stroke="#05050a" strokeWidth="2.5" strokeLinecap="round"/><circle cx="12" cy="12" r="4" fill="#05050a"/></svg>
           </div>
           <span style={{ fontSize: 17, fontWeight: 700, color: "#fff", letterSpacing: "-0.03em", fontFamily: "'DM Sans', sans-serif" }}>vaidy</span>
         </a>
@@ -428,7 +428,7 @@ function Navbar({ scrollY, onOpenWaitlist }) {
             >{label}</a>
           ))}
           <motion.button type="button" onClick={onOpenWaitlist} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-            style={{ marginLeft: 8, padding: "7px 20px", background: EMERALD, color: "#03120a", border: "none", borderRadius: 24, fontSize: 13.5, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 24px rgba(0,217,126,0.3)`, cursor: "pointer" }}>
+            style={{ marginLeft: 8, padding: "7px 20px", background: EMERALD, color: "#05050a", border: "none", borderRadius: 24, fontSize: 13.5, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 24px rgba(0,217,126,0.3)`, cursor: "pointer" }}>
             Try free
           </motion.button>
         </nav>
@@ -515,7 +515,7 @@ function Navbar({ scrollY, onOpenWaitlist }) {
                   marginTop: 10,
                   padding: "13px 20px",
                   background: EMERALD,
-                  color: "#03120a",
+                  color: "#05050a",
                   border: "none",
                   borderRadius: 14,
                   fontSize: 15,
@@ -578,9 +578,9 @@ function Hero({ onOpenWaitlist }) {
             marginRight: "auto",
           }}>
           <motion.a href="/chat" whileHover={{ scale: 1.04, boxShadow: `0 0 48px rgba(0,217,126,0.5)` }} whileTap={{ scale: 0.97 }}
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 28px", background: EMERALD, color: "#03120a", border: "none", borderRadius: 32, fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 32px rgba(0,217,126,0.35)`, transition: "box-shadow 0.2s", cursor: "pointer", width: mobile ? "100%" : "auto", textDecoration: "none" }}>
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 28px", background: EMERALD, color: "#05050a", border: "none", borderRadius: 32, fontSize: 15, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 32px rgba(0,217,126,0.35)`, transition: "box-shadow 0.2s", cursor: "pointer", width: mobile ? "100%" : "auto", textDecoration: "none" }}>
             Open Assistant
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#03120a" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#05050a" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </motion.a>
           <motion.a href="#demo" onClick={(event) => handleSmoothAnchorClick(event, "#demo")} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
             style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 28px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 32, fontSize: 15, fontWeight: 600, textDecoration: "none", fontFamily: "'DM Sans', sans-serif", width: mobile ? "100%" : "auto" }}>
@@ -985,7 +985,7 @@ function ExplainSection() {
                 <div style={{ display: "flex", gap: 8, marginTop: 16, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
                   <span style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontFamily: "'DM Sans', sans-serif", flex: 1 }}>Ask Vaidy anything about your health...</span>
                   <div style={{ width: 28, height: 28, borderRadius: 8, background: EMERALD, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#03120a" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#05050a" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </div>
                 </div>
               </div>
@@ -1379,7 +1379,7 @@ function FinalCTA({ onOpenWaitlist }) {
           <motion.button type="button" onClick={onOpenWaitlist}
             onHoverStart={() => setHover(true)} onHoverEnd={() => setHover(false)}
             whileHover={{ scale: 1.04, boxShadow: `0 0 64px rgba(0,217,126,0.5)` }} whileTap={{ scale: 0.97 }}
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "16px 36px", background: `linear-gradient(135deg, ${EMERALD}, ${TEAL})`, color: "#03120a", border: "none", borderRadius: 36, fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 40px rgba(0,217,126,0.35)`, cursor: "pointer", width: mobile ? "100%" : "auto", maxWidth: mobile ? 360 : "none" }}>
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "16px 36px", background: `linear-gradient(135deg, ${EMERALD}, ${TEAL})`, color: "#05050a", border: "none", borderRadius: 36, fontSize: 16, fontWeight: 700, fontFamily: "'DM Sans', sans-serif", boxShadow: `0 0 40px rgba(0,217,126,0.35)`, cursor: "pointer", width: mobile ? "100%" : "auto", maxWidth: mobile ? 360 : "none" }}>
             <AnimatePresence mode="wait">
               <motion.span key={hover ? "go" : "upload"} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -12, opacity: 0 }} transition={{ duration: 0.15 }}>
                 {hover ? "Let's go →" : "Upload Your First Report →"}

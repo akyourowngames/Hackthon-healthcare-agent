@@ -60,11 +60,31 @@ create table if not exists public.notification_outbox (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.user_profiles (
+  user_id text primary key,
+  email text not null default '',
+  full_name text not null default '',
+  phone text not null default '',
+  city text not null default '',
+  date_of_birth text not null default '',
+  gender text not null default '',
+  language text not null default 'en',
+  blood_group text not null default '',
+  conditions jsonb not null default '[]'::jsonb,
+  medications text not null default '',
+  notifications jsonb not null default '{}'::jsonb,
+  google_avatar_url text not null default '',
+  member_since text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.reports enable row level security;
 alter table public.biomarker_history enable row level security;
 alter table public.anomaly_findings enable row level security;
 alter table public.share_links enable row level security;
 alter table public.notification_outbox enable row level security;
+alter table public.user_profiles enable row level security;
 
 create policy "Users can read own reports" on public.reports
   for select using (auth.uid()::text = user_id);
@@ -126,6 +146,18 @@ create policy "Users can update own notifications" on public.notification_outbox
 create policy "Users can delete own notifications" on public.notification_outbox
   for delete using (auth.uid()::text = user_id);
 
+create policy "Users can read own profile" on public.user_profiles
+  for select using (auth.uid()::text = user_id);
+
+create policy "Users can insert own profile" on public.user_profiles
+  for insert with check (auth.uid()::text = user_id);
+
+create policy "Users can update own profile" on public.user_profiles
+  for update using (auth.uid()::text = user_id);
+
+create policy "Users can delete own profile" on public.user_profiles
+  for delete using (auth.uid()::text = user_id);
+
 insert into storage.buckets (id, name, public)
 values ('User Data', 'User Data', false)
 on conflict (id) do nothing;
@@ -153,3 +185,23 @@ create policy "Users can delete own files" on storage.objects
     bucket_id = 'User Data'
     and auth.uid()::text = (storage.foldername(name))[1]
   );
+
+create or replace function public.handle_new_vaidy_user()
+returns trigger as $$
+begin
+  insert into public.user_profiles (user_id, email, full_name, google_avatar_url, member_since)
+  values (
+    new.id::text,
+    coalesce(new.email, ''),
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', ''),
+    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture', ''),
+    now()::date::text
+  )
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create or replace trigger on_auth_user_created_vaidy_profile
+  after insert on auth.users
+  for each row execute function public.handle_new_vaidy_user();

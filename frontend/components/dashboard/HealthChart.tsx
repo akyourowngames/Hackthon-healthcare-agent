@@ -23,23 +23,23 @@ const CustomTooltip = ({
 }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-teal-500/30 bg-[#16161e] px-3 py-2 text-sm shadow-xl">
-      <p className="text-slate-400">{label}</p>
-      <p className="font-bold text-teal-400">{payload[0].value} g/dL</p>
+    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm shadow-xl">
+      <p className="text-secondary">{label}</p>
+      <p className="font-bold text-accent">{payload[0].value} g/dL</p>
     </div>
   );
 };
 
 export function HealthChart() {
   return (
-    <div className="dashboard-card rounded-xl border border-white/[0.08] bg-white/[0.04] p-5">
+    <div className="dashboard-card rounded-xl border border-border bg-surface p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-heading text-lg font-bold text-white">Health Trend</h2>
-          <p className="text-sm text-slate-500">Hemoglobin over 6 months</p>
+          <h2 className="font-heading text-lg font-bold text-primary">Health Trend</h2>
+          <p className="text-sm text-muted">Hemoglobin over 6 months</p>
         </div>
         <select
-          className="rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 py-2 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-teal-500/30"
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary outline-none focus:border-accent-primary focus:shadow-accent-glow"
           defaultValue="hemoglobin"
           aria-label="Select biomarker"
         >
@@ -52,28 +52,28 @@ export function HealthChart() {
           <AreaChart data={HEMOGLOBIN_CHART} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
             <defs>
               <linearGradient id="hemoglobinFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#14b8a6" stopOpacity={0} />
+                <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+            <CartesianGrid stroke="#1e1e2e" vertical={false} />
             <ReferenceArea y1={12} y2={15.5} fill="#10b981" fillOpacity={0.06} />
-            <XAxis dataKey="month" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis domain={[8, 16]} tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="month" tick={{ fill: "#9ca3af", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis domain={[8, 16]} tick={{ fill: "#9ca3af", fontSize: 12 }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
             <Area
               type="monotone"
               dataKey="value"
-              stroke="#14b8a6"
+              stroke="#10b981"
               strokeWidth={2.5}
               fill="url(#hemoglobinFill)"
-              dot={{ fill: "#14b8a6", r: 4, strokeWidth: 0 }}
-              activeDot={{ r: 6, fill: "#2dd4bf" }}
+              dot={{ fill: "#10b981", r: 4, strokeWidth: 0 }}
+              activeDot={{ r: 6, fill: "#34d399" }}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-2 text-center text-xs text-emerald-500/60">Shaded band: normal range (12–15.5 g/dL)</p>
+      <p className="mt-2 text-center text-xs text-accent/60">Shaded band: normal range (12–15.5 g/dL)</p>
     </div>
   );
 }

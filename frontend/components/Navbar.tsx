@@ -3,8 +3,6 @@
 import { AnimatePresence, motion, useScroll, useTransform } from "framer-motion";
 import { useState, type MouseEvent } from "react";
 import Link from "next/link";
-import { useWaitlist } from "@/components/WaitlistProvider";
-
 const navLinks = [
   { label: "Assistant", href: "/chat" },
   { label: "Features", href: "#features" },
@@ -13,7 +11,7 @@ const navLinks = [
 ];
 
 function scrollToAnchor(event: MouseEvent<HTMLAnchorElement>, href: string) {
-  if (!href.startsWith("#")) return; // let normal navigation happen for page links
+  if (!href.startsWith("#")) return;
   const target = document.getElementById(href.slice(1));
   if (!target) return;
   event.preventDefault();
@@ -23,30 +21,28 @@ function scrollToAnchor(event: MouseEvent<HTMLAnchorElement>, href: string) {
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
-  const { openWaitlist } = useWaitlist();
   const { scrollY } = useScroll();
-  const bg = useTransform(scrollY, [0, 80], ["rgba(4,5,10,0)", "rgba(4,5,10,0.92)"]);
-  const borderColor = useTransform(scrollY, [0, 80], ["rgba(255,255,255,0)", "rgba(255,255,255,0.06)"]);
+  const bg = useTransform(scrollY, [0, 80], ["rgba(5,5,10,0)", "rgba(5,5,10,0.92)"]);
+  const borderColor = useTransform(scrollY, [0, 80], ["rgba(30,30,46,0)", "rgba(30,30,46,1)"]);
 
   return (
     <motion.header
-      className="fixed inset-x-0 top-0 z-[100] border-b backdrop-blur-[24px]"
+      className="fixed inset-x-0 top-0 z-[100] border-b border-border bg-primary backdrop-blur-[24px]"
       style={{ background: bg, borderColor }}
     >
       <div className="mx-auto flex h-[60px] max-w-[1200px] items-center justify-between px-4 md:px-6">
-        <a
-          href="#hero"
-          onClick={(event) => scrollToAnchor(event, "#hero")}
+        <Link
+          href="/"
           className="flex items-center gap-2.5 no-underline"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-300">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 3v3M21 12h-3M12 21v-3M3 12h3" stroke="#04050a" strokeWidth="2.5" strokeLinecap="round" />
-              <circle cx="12" cy="12" r="4" fill="#04050a" />
+              <path d="M12 3v3M21 12h-3M12 21v-3M3 12h3" stroke="var(--bg-primary)" strokeWidth="2.5" strokeLinecap="round" />
+              <circle cx="12" cy="12" r="4" fill="var(--bg-primary)" />
             </svg>
           </span>
-          <span className="text-[17px] font-bold tracking-[-0.03em] text-white">vaidy</span>
-        </a>
+          <span className="text-[17px] font-bold tracking-[-0.03em] text-primary">vaidy</span>
+        </Link>
 
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
           {navLinks.map((link) => (
@@ -54,15 +50,15 @@ export default function Navbar() {
               key={link.href}
               href={link.href}
               onClick={(event) => scrollToAnchor(event, link.href)}
-              className="rounded-full px-3.5 py-1.5 text-[13.5px] text-white/60 transition-colors hover:text-white"
+              className="rounded-full px-3.5 py-1.5 text-[13.5px] text-secondary transition-colors hover:text-primary"
             >
               {link.label}
             </a>
           ))}
           <motion.button
             type="button"
-            onClick={() => window.location.href = "/dashboard"}
-            className="ml-2 rounded-3xl bg-emerald-400 px-5 py-[7px] text-[13.5px] font-semibold text-[#03120a] shadow-[0_0_24px_rgba(0,217,126,0.3)]"
+            onClick={() => (window.location.href = "/dashboard")}
+            className="ml-2 rounded-lg bg-accent-primary px-5 py-[7px] text-[13.5px] font-semibold text-primary shadow-accent-glow hover:bg-accent-secondary"
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
           >
@@ -72,7 +68,7 @@ export default function Navbar() {
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white md:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-elevated text-primary md:hidden"
           aria-label={isOpen ? "Close menu" : "Open menu"}
           aria-expanded={isOpen}
           aria-controls="mobile-nav"
@@ -90,7 +86,7 @@ export default function Navbar() {
         {isOpen ? (
           <motion.div
             id="mobile-nav"
-            className="mx-4 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-bg-void/95 md:hidden"
+            className="mx-4 mb-3 overflow-hidden rounded-xl border border-border bg-surface md:hidden"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -101,7 +97,7 @@ export default function Navbar() {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="rounded-xl px-4 py-3 text-sm text-white/70 hover:bg-white/5 hover:text-white"
+                  className="rounded-lg px-4 py-3 text-sm text-secondary hover:bg-elevated hover:text-primary"
                   onClick={(event) => {
                     scrollToAnchor(event, link.href);
                     setIsOpen(false);
@@ -112,7 +108,7 @@ export default function Navbar() {
               ))}
               <button
                 type="button"
-                className="mt-1 rounded-xl bg-emerald-400 px-4 py-3 text-center text-sm font-semibold text-[#03120a]"
+                className="mt-1 rounded-lg bg-accent-primary px-4 py-3 text-center text-sm font-semibold text-primary hover:bg-accent-secondary"
                 onClick={() => {
                   setIsOpen(false);
                   window.location.href = "/dashboard";

@@ -34,10 +34,11 @@ def initialize_memory(settings: AgentSettings | None = None) -> None:
         _ensure_schema(connection)
 
 
-def ensure_session(session_id: str | None = None, settings: AgentSettings | None = None) -> str:
+def ensure_session(session_id: str | None = None, settings: AgentSettings | None = None, user_id: str = "") -> str:
     active_settings = settings or load_agent_settings()
     initialize_memory(active_settings)
     safe_session_id = str(session_id or "").strip() or str(uuid.uuid4())
+    safe_user_id = str(user_id or "").strip()
     now = _now()
     with _connect(active_settings) as connection:
         row = connection.execute(
@@ -48,16 +49,16 @@ def ensure_session(session_id: str | None = None, settings: AgentSettings | None
             connection.execute(
                 """
                 INSERT INTO chat_sessions (
-                    session_id, title, created_at, updated_at, message_count
+                    session_id, user_id, title, created_at, updated_at, message_count
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (safe_session_id, "", now, now, 0),
+                (safe_session_id, safe_user_id, "", now, now, 0),
             )
         else:
             connection.execute(
-                "UPDATE chat_sessions SET updated_at = ? WHERE session_id = ?",
-                (now, safe_session_id),
+                "UPDATE chat_sessions SET updated_at = ?, user_id = ? WHERE session_id = ?",
+                (now, safe_user_id, safe_session_id),
             )
         connection.commit()
     return safe_session_id
@@ -68,9 +69,10 @@ def save_chat_message(
     role: str,
     content: str,
     settings: AgentSettings | None = None,
+    user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
-    safe_session_id = ensure_session(session_id, active_settings)
+    safe_session_id = ensure_session(session_id, active_settings, user_id=user_id)
     safe_role = str(role or "").strip().lower()
     if safe_role not in {"user", "assistant"}:
         safe_role = "user"
@@ -137,6 +139,7 @@ def remember_text(
     session_id: str | None = None,
     importance: float | None = None,
     settings: AgentSettings | None = None,
+    user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
@@ -144,7 +147,8 @@ def remember_text(
     clean_text = _compact_text(text)
     if len(clean_text) < active_settings.memory_min_text_chars:
         return {"stored": False, "reason": "too_short", "session_id": str(session_id or "")}
-    safe_session_id = ensure_session(session_id, active_settings)
+    safe_session_id = ensure_session(session_id, active_settings, user_id=user_id)
+    safe_user_id = str(user_id or "").strip()
     safe_source = _compact_text(source) or "manual"
     safe_importance = float(importance if importance is not None else active_settings.memory_importance_default)
     vector, provider = _embedding_vector(clean_text, active_settings)
@@ -153,22 +157,23 @@ def remember_text(
     now = _now()
     with _connect(active_settings) as connection:
         row = connection.execute(
-            "SELECT id, importance FROM memory_entries WHERE text_key = ?",
-            (text_key,),
+            "SELECT id, importance FROM memory_entries WHERE text_key = ? AND user_id = ?",
+            (text_key, safe_user_id),
         ).fetchone()
         if row is None:
             cursor = connection.execute(
                 """
                 INSERT INTO memory_entries (
-                    text, text_key, source, session_id, importance, vector_json,
+                    text, text_key, source, user_id, session_id, importance, vector_json,
                     embedding_provider, created_at, updated_at, last_seen_at, access_count
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     clean_text,
                     text_key,
                     safe_source,
+                    safe_user_id,
                     safe_session_id,
                     safe_importance,
                     vector_json,
@@ -294,13 +299,14 @@ def remember_turn(
     user_text: str,
     assistant_text: str,
     settings: AgentSettings | None = None,
+    user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return {"stored": False, "reason": "disabled", "session_id": str(session_id or "")}
-    safe_session_id = ensure_session(session_id, active_settings)
-    save_chat_message(safe_session_id, "user", user_text, active_settings)
-    save_chat_message(safe_session_id, "assistant", assistant_text, active_settings)
+    safe_session_id = ensure_session(session_id, active_settings, user_id=user_id)
+    save_chat_message(safe_session_id, "user", user_text, active_settings, user_id=user_id)
+    save_chat_message(safe_session_id, "assistant", assistant_text, active_settings, user_id=user_id)
     _maybe_summarize_session(safe_session_id, active_settings)
     if not active_settings.memory_auto_store_turns:
         return {"stored": False, "session_id": safe_session_id, "reason": "auto_store_off"}
@@ -317,6 +323,7 @@ def remember_turn(
         source="conversation_turn",
         session_id=safe_session_id,
         settings=active_settings,
+        user_id=user_id,
     )
     remembered["session_id"] = safe_session_id
     return remembered
@@ -327,6 +334,7 @@ def recall_memories(
     session_id: str | None = None,
     limit: int | None = None,
     settings: AgentSettings | None = None,
+    user_id: str = "",
 ) -> list[MemoryHit]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
@@ -337,16 +345,28 @@ def recall_memories(
         return []
     safe_limit = max(1, int(limit or active_settings.memory_recall_limit))
     safe_session_id = str(session_id or "").strip()
+    safe_user_id = str(user_id or "").strip()
     query_vector, _provider = _embedding_vector(clean_query, active_settings)
     query_terms = set(_terms(clean_query))
     with _connect(active_settings) as connection:
-        rows = connection.execute(
-            """
-            SELECT id, text, source, session_id, importance, vector_json,
-                   created_at, last_seen_at, access_count
-            FROM memory_entries
-            """
-        ).fetchall()
+        if safe_user_id:
+            rows = connection.execute(
+                """
+                SELECT id, text, source, user_id, session_id, importance, vector_json,
+                       created_at, last_seen_at, access_count
+                FROM memory_entries
+                WHERE user_id = ?
+                """,
+                (safe_user_id,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT id, text, source, user_id, session_id, importance, vector_json,
+                       created_at, last_seen_at, access_count
+                FROM memory_entries
+                """
+            ).fetchall()
     hits: list[MemoryHit] = []
     for row in rows:
         vector = _vector_from_json(str(row["vector_json"] or "[]"), active_settings.embedding_dim)
@@ -384,17 +404,18 @@ def memory_context(
     query: str,
     session_id: str | None = None,
     settings: AgentSettings | None = None,
+    user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return {"context": "", "hits": [], "history_messages": []}
-    safe_session_id = ensure_session(session_id, active_settings)
+    safe_session_id = ensure_session(session_id, active_settings, user_id=user_id)
     history = recent_session_messages(
         safe_session_id,
         active_settings.memory_session_history_messages,
         active_settings,
     )
-    hits = recall_memories(query, safe_session_id, active_settings.memory_recall_limit, active_settings)
+    hits = recall_memories(query, safe_session_id, active_settings.memory_recall_limit, active_settings, user_id=user_id)
     lines: list[str] = []
     if hits:
         lines.append("Relevant persistent memory:")
@@ -413,21 +434,35 @@ def memory_context(
     }
 
 
-def list_memory_entries(limit: int = 50, settings: AgentSettings | None = None) -> list[dict[str, Any]]:
+def list_memory_entries(limit: int = 50, settings: AgentSettings | None = None, user_id: str = "") -> list[dict[str, Any]]:
     active_settings = settings or load_agent_settings()
     initialize_memory(active_settings)
     safe_limit = max(1, int(limit))
+    safe_user_id = str(user_id or "").strip()
     with _connect(active_settings) as connection:
-        rows = connection.execute(
-            """
-            SELECT id, text, source, session_id, importance, created_at,
-                   updated_at, last_seen_at, access_count, embedding_provider
-            FROM memory_entries
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ?
-            """,
-            (safe_limit,),
-        ).fetchall()
+        if safe_user_id:
+            rows = connection.execute(
+                """
+                SELECT id, text, source, user_id, session_id, importance, created_at,
+                       updated_at, last_seen_at, access_count, embedding_provider
+                FROM memory_entries
+                WHERE user_id = ?
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                (safe_user_id, safe_limit),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT id, text, source, user_id, session_id, importance, created_at,
+                       updated_at, last_seen_at, access_count, embedding_provider
+                FROM memory_entries
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -480,6 +515,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS chat_sessions (
             session_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT '',
             title TEXT NOT NULL,
             summary TEXT NOT NULL DEFAULT '',
             summarized_message_count INTEGER NOT NULL DEFAULT 0,
@@ -494,6 +530,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL DEFAULT '',
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -506,8 +543,9 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS memory_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             text TEXT NOT NULL,
-            text_key TEXT NOT NULL UNIQUE,
+            text_key TEXT NOT NULL,
             source TEXT NOT NULL,
+            user_id TEXT NOT NULL DEFAULT '',
             session_id TEXT NOT NULL,
             importance REAL NOT NULL,
             vector_json TEXT NOT NULL,
@@ -522,10 +560,15 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
     )
     connection.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_memory_entries_session ON memory_entries(session_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_memory_entries_user ON memory_entries(user_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id)")
     _ensure_column(connection, "chat_sessions", "summary", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(connection, "chat_sessions", "summarized_message_count", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(connection, "chat_sessions", "active_report_id", "INTEGER")
     _ensure_column(connection, "chat_sessions", "active_report_at", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "chat_sessions", "user_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "chat_messages", "user_id", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(connection, "memory_entries", "user_id", "TEXT NOT NULL DEFAULT ''")
     connection.commit()
 
 

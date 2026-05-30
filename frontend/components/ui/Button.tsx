@@ -14,13 +14,13 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-[0_0_24px_rgba(20,184,166,0.25)] hover:brightness-110 active:scale-[0.98]",
+    "border-none bg-accent-primary text-primary hover:bg-accent-secondary active:scale-[0.98]",
   secondary:
-    "border border-white/10 bg-white/[0.04] text-slate-200 hover:border-teal-500/30 hover:bg-white/[0.06]",
-  ghost: "text-teal-400 hover:bg-teal-500/10 hover:text-teal-300",
-  danger: "border border-red-500/40 text-red-300 hover:bg-red-500/10",
+    "border border-border bg-transparent text-primary hover:bg-elevated",
+  ghost: "text-accent hover:bg-elevated hover:text-accent",
+  danger: "border border-status-critical bg-transparent text-status-critical hover:bg-status-critical/10",
   outline:
-    "border border-teal-500/40 text-teal-300 hover:border-teal-400 hover:bg-teal-500/10",
+    "border border-border text-accent hover:border-accent-primary hover:bg-elevated",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

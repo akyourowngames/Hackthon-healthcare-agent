@@ -73,7 +73,7 @@ export default function ReportsPage() {
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-secondary">
               {reports.length} reports stored · All encrypted
             </p>
           </div>
@@ -82,13 +82,13 @@ export default function ReportsPage() {
           </Button>
         </div>
 
-        <div className="dashboard-card space-y-4 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
+        <div className="dashboard-card space-y-4 rounded-xl border border-border bg-surface p-4">
           <input
             type="search"
             placeholder="Search by report type, lab, or biomarker..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full min-h-[44px] rounded-lg border border-white/[0.08] bg-[#0d0d12] px-4 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/30"
+            className="w-full min-h-[44px] rounded-lg border border-border bg-surface px-4 text-sm text-primary outline-none focus:ring-2 focus:border-accent-primary focus:shadow-accent-glow"
           />
           <div className="flex flex-wrap gap-2">
             {FILTER_TYPES.map((f) => (
@@ -98,8 +98,8 @@ export default function ReportsPage() {
                 onClick={() => setFilter(f)}
                 className={`min-h-[44px] rounded-full border px-4 text-sm font-medium transition ${
                   filter === f
-                    ? "border-teal-500 bg-teal-500/15 text-teal-300"
-                    : "border-white/[0.08] text-slate-500 hover:text-white"
+                    ? "border-accent-primary bg-accent-glow text-accent"
+                    : "border-border text-secondary hover:text-primary"
                 }`}
               >
                 {f}
@@ -110,18 +110,18 @@ export default function ReportsPage() {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="min-h-[44px] rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 text-sm text-slate-300"
+              className="min-h-[44px] rounded-lg border border-border bg-surface px-3 text-sm text-secondary"
               aria-label="Sort reports"
             >
               <option value="newest">Newest First</option>
               <option value="oldest">Oldest First</option>
               <option value="lab">Lab Name</option>
             </select>
-            <div className="flex rounded-lg border border-white/[0.08] p-1">
+            <div className="flex rounded-lg border border-border p-1">
               <button
                 type="button"
                 onClick={() => setView("grid")}
-                className={`flex h-9 w-9 items-center justify-center rounded-md ${view === "grid" ? "bg-teal-500/20 text-teal-400" : "text-slate-500"}`}
+                className={`flex h-9 w-9 items-center justify-center rounded-md ${view === "grid" ? "bg-accent-glow text-accent" : "text-secondary"}`}
                 aria-label="Grid view"
               >
                 <LayoutGrid className="h-4 w-4" />
@@ -129,7 +129,7 @@ export default function ReportsPage() {
               <button
                 type="button"
                 onClick={() => setView("list")}
-                className={`flex h-9 w-9 items-center justify-center rounded-md ${view === "list" ? "bg-teal-500/20 text-teal-400" : "text-slate-500"}`}
+                className={`flex h-9 w-9 items-center justify-center rounded-md ${view === "list" ? "bg-accent-glow text-accent" : "text-secondary"}`}
                 aria-label="List view"
               >
                 <List className="h-4 w-4" />
@@ -146,7 +146,7 @@ export default function ReportsPage() {
               <div key={report.id}>
                 <ReportCard report={report} onDelete={confirmDelete} />
                 {deleteId === report.id ? (
-                  <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  <div className="mt-2 rounded-lg border border-status-critical/30 bg-status-critical/10 px-3 py-2 text-xs text-status-critical">
                     Tap delete again to confirm removal.
                   </div>
                 ) : null}
@@ -157,15 +157,15 @@ export default function ReportsPage() {
           <ReportsTable reports={filtered} onDelete={confirmDelete} deleteId={deleteId} />
         )}
 
-        <section className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
+        <section className="rounded-xl border border-border bg-surface p-4">
           <div className="mb-2 flex justify-between text-sm">
             <span className="text-slate-400">2.3 GB of 5 GB used · 46%</span>
-            <button type="button" className="font-semibold text-teal-400 hover:text-teal-300">
+            <button type="button" className="font-semibold text-accent hover:text-accent-secondary">
               Upgrade Plan →
             </button>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full w-[46%] rounded-full bg-gradient-to-r from-teal-500 to-emerald-500" />
+          <div className="h-2 overflow-hidden rounded-full bg-elevated">
+            <div className="h-full w-[46%] rounded-full bg-accent-primary" />
           </div>
         </section>
       </motion.div>
@@ -177,14 +177,14 @@ export default function ReportsPage() {
 
 function EmptyReports({ onUpload }: { onUpload: () => void }) {
   return (
-    <section className="flex flex-col items-center rounded-xl border border-dashed border-white/[0.1] py-16 text-center">
-      <svg className="h-24 w-24 text-teal-500/80" viewBox="0 0 120 120" fill="none" aria-hidden>
+    <section className="flex flex-col items-center rounded-xl border border-dashed border-border bg-surface py-16 text-center">
+      <svg className="h-24 w-24 text-accent/80" viewBox="0 0 120 120" fill="none" aria-hidden>
         <rect x="28" y="20" width="64" height="80" rx="12" fill="rgba(20,184,166,0.12)" stroke="currentColor" strokeWidth="2" />
         <path d="M60 50v24M48 62h24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
         <path d="M60 38l8 8-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <h2 className="mt-6 font-heading text-xl font-bold text-white">No reports yet</h2>
-      <p className="mt-2 max-w-sm text-sm text-slate-500">
+      <h2 className="mt-6 font-heading text-xl font-bold text-primary">No reports yet</h2>
+      <p className="mt-2 max-w-sm text-sm text-secondary">
         Upload your first report and let Vaidy decode your health
       </p>
       <Button className="mt-6" onClick={onUpload} leftIcon={<FileUp className="h-4 w-4" />}>
@@ -204,9 +204,9 @@ function ReportsTable({
   deleteId: string | null;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
+    <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[640px] text-left text-sm">
-        <thead className="bg-[#111118] text-slate-500">
+        <thead className="bg-elevated text-secondary">
           <tr>
             {["Report Type", "Lab", "Date", "Status", "Key Findings", "Actions"].map((h) => (
               <th key={h} className="px-4 py-3 font-semibold">
@@ -222,16 +222,16 @@ function ReportsTable({
           {reports.map((report, i) => (
             <tr
               key={report.id}
-              className={`border-t border-white/[0.06] ${i % 2 === 1 ? "bg-white/[0.02]" : ""}`}
+              className={`border-t border-border ${i % 2 === 1 ? "bg-elevated" : ""}`}
             >
-              <td className="px-4 py-3 font-medium text-white">{report.type}</td>
+              <td className="px-4 py-3 font-medium text-primary">{report.type}</td>
               <td className="px-4 py-3">
                 <span className="inline-flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full" style={{ background: LAB_COLORS[report.labKey] }} />
                   {report.lab}
                 </span>
               </td>
-              <td className="px-4 py-3 text-slate-500">{formatReportDate(report.date)}</td>
+              <td className="px-4 py-3 text-secondary">{formatReportDate(report.date)}</td>
               <td className="px-4 py-3">
                 <Badge variant={statusBadgeVariant(report.status)}>{report.status}</Badge>
               </td>
@@ -240,7 +240,7 @@ function ReportsTable({
                 <button
                   type="button"
                   onClick={() => onDelete(report.id)}
-                  className={`text-xs font-medium ${deleteId === report.id ? "text-red-400" : "text-slate-500 hover:text-red-400"}`}
+                  className={`text-xs font-medium ${deleteId === report.id ? "text-status-critical" : "text-secondary hover:text-status-critical"}`}
                 >
                   {deleteId === report.id ? "Confirm" : "Delete"}
                 </button>

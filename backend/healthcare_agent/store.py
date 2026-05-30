@@ -216,17 +216,22 @@ def save_document(
     return save_report(payload, resolved, target, settings, user_id=user_id)
 
 
-def list_reports(settings: AgentSettings | None = None) -> list[dict[str, Any]]:
+def list_reports(settings: AgentSettings | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
+    safe_user_id = str(user_id or "").strip()
+    if not safe_user_id:
+        return []
     with _connect(active_settings) as connection:
         rows = connection.execute(
             """
             SELECT id, user_id, patient_name, report_date, lab_name, report_status,
                    biomarker_count, source_path, stored_json_path, created_at
             FROM reports
+            WHERE user_id = ?
             ORDER BY id DESC
-            """
+            """,
+            (safe_user_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -304,10 +309,13 @@ def existing_report_ids(settings: AgentSettings | None = None) -> set[int]:
     return {int(row["id"]) for row in rows}
 
 
-def search_reports(query: str, limit: int | None = None, settings: AgentSettings | None = None) -> list[SearchHit]:
+def search_reports(query: str, limit: int | None = None, settings: AgentSettings | None = None, user_id: str | None = None) -> list[SearchHit]:
     active_settings = settings or load_agent_settings()
     initialize_database(active_settings)
     safe_limit = max(1, int(limit or active_settings.search_limit))
+    safe_user_id = str(user_id or "").strip()
+    if not safe_user_id:
+        return []
     query_vector = np.asarray(embed_texts(query, active_settings).vectors, dtype=np.float32).reshape(-1)
     with _connect(active_settings) as connection:
         rows = connection.execute(
@@ -317,7 +325,9 @@ def search_reports(query: str, limit: int | None = None, settings: AgentSettings
                    reports.lab_name
             FROM report_chunks AS chunks
             JOIN reports ON reports.id = chunks.report_id
-            """
+            WHERE reports.user_id = ?
+            """,
+            (safe_user_id,),
         ).fetchall()
     scored: list[tuple[float, SearchHit]] = []
     for row in rows:
@@ -450,10 +460,6 @@ def dashboard_snapshot(user_id: str | None = None, settings: AgentSettings | Non
     safe_user_id = str(user_id or active_settings.default_user_id).strip() or active_settings.default_user_id
     history = list_biomarker_history(safe_user_id, settings=active_settings)
     findings = list_anomaly_findings(safe_user_id, active_settings)
-    # If the authenticated user has no data, try the default user as fallback
-    if not history and not findings and safe_user_id != active_settings.default_user_id:
-        history = list_biomarker_history(active_settings.default_user_id, settings=active_settings)
-        findings = list_anomaly_findings(active_settings.default_user_id, active_settings)
     score = compute_health_score(history, findings, policy_from_settings(active_settings))
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in history:
@@ -471,7 +477,7 @@ def dashboard_snapshot(user_id: str | None = None, settings: AgentSettings | Non
             }
         )
     biomarkers.sort(key=lambda item: str(item.get("name") or ""))
-    reports = list_reports(active_settings)
+    reports = list_reports(active_settings, user_id=safe_user_id)
     return {
         "user_id": safe_user_id,
         "health_score": score,

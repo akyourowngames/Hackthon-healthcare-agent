@@ -13,7 +13,17 @@ __pycache__/
 # Node
 node_modules/
 .next/
+.next_backup/
 *.tsbuildinfo
+
+# Backup folders
+frontend_backup/
+frontend_new/
+ref/
+*_backup/
+*_log
+*_err.log
+.trigger
 
 # Data / dump folders (keep only .gitkeep placeholders)
 input/*

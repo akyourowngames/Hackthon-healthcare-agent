@@ -6,25 +6,46 @@ const config = {
   ],
   theme: {
     extend: {
+      backgroundColor: {
+        primary: "var(--bg-primary)",
+        surface: "var(--bg-surface)",
+        elevated: "var(--bg-elevated)",
+        border: "var(--bg-border)",
+      },
+      textColor: {
+        primary: "var(--text-primary)",
+        secondary: "var(--text-secondary)",
+        muted: "var(--text-muted)",
+        accent: "var(--text-accent)",
+      },
+      borderColor: {
+        DEFAULT: "var(--bg-border)",
+        border: "var(--bg-border)",
+      },
       colors: {
-        "bg-void": "#04050a",
-        surface: "#060810",
-        "surface-2": "#0a0d16",
-        glass: "rgba(255,255,255,0.025)",
-        border: "rgba(255,255,255,0.07)",
-        "warm-white": "#ffffff",
-        gold: {
-          300: "#00c4b8",
-          400: "#00d97e",
+        accent: {
+          primary: "var(--accent-primary)",
+          secondary: "var(--accent-secondary)",
+          glow: "var(--accent-glow)",
         },
+        status: {
+          critical: "var(--status-critical)",
+          warning: "var(--status-warning)",
+          normal: "var(--status-normal)",
+          improving: "var(--status-improving)",
+        },
+        /* Legacy aliases — map to design tokens */
+        "bg-void": "var(--bg-primary)",
+        surface: "var(--bg-surface)",
+        "surface-2": "var(--bg-elevated)",
+        "warm-white": "var(--text-primary)",
         emerald: {
-          400: "#00d97e",
+          400: "var(--accent-primary)",
+          500: "var(--accent-primary)",
         },
-        teal: {
-          300: "#00c4b8",
-        },
-        indigo: {
-          400: "#a78bfa",
+        gold: {
+          300: "var(--status-improving)",
+          400: "var(--accent-primary)",
         },
       },
       fontFamily: {
@@ -39,6 +60,14 @@ const config = {
       },
       letterSpacing: {
         display: "-0.04em",
+      },
+      borderRadius: {
+        card: "0.75rem",
+        btn: "0.5rem",
+        input: "0.5rem",
+      },
+      boxShadow: {
+        "accent-glow": "0 0 0 3px var(--accent-glow)",
       },
       opacity: {
         8: "0.08",
@@ -55,8 +84,8 @@ const config = {
           "50%": { transform: "translate3d(0, -18px, 0)" },
         },
         "pulse-glow": {
-          "0%, 100%": { opacity: "0.55", boxShadow: "0 0 0 0 rgba(0, 217, 126, 0.45)" },
-          "50%": { opacity: "1", boxShadow: "0 0 24px 4px rgba(0, 217, 126, 0.45)" },
+          "0%, 100%": { opacity: "0.55", boxShadow: "0 0 0 0 rgba(16, 185, 129, 0.45)" },
+          "50%": { opacity: "1", boxShadow: "0 0 24px 4px rgba(16, 185, 129, 0.45)" },
         },
         shimmer: {
           "0%": { backgroundPosition: "-220% center" },

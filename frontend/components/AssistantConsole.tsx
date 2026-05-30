@@ -163,7 +163,7 @@ export default function AssistantConsole() {
   const isDemoReportMode = isDemoUrl || !hasLoadedUserReport;
   const shouldUseDemoReplies = isMockMode || isDemoReportMode;
   const connectionLabel = shouldUseDemoReplies ? "demo" : statusError ? "offline" : status ? "live" : "connecting";
-  const connectionDotClass = shouldUseDemoReplies ? "bg-amber-300" : statusError ? "bg-red-400" : status ? "bg-[#00d97e]" : "bg-amber-300";
+  const connectionDotClass = shouldUseDemoReplies ? "bg-status-warning" : statusError ? "bg-status-critical" : status ? "bg-status-normal" : "bg-status-warning";
 
   const syncSessionId = useCallback((value: unknown) => {
     if (typeof value !== "string" || !value.trim()) return;
@@ -443,34 +443,34 @@ export default function AssistantConsole() {
   const selectLanguage = (v: string) => { setLanguagePreference(v); window.localStorage.setItem(LANGUAGE_KEY, v); };
 
   return (
-    <main className="relative h-[var(--app-height,100vh)] overflow-hidden bg-[#050608] text-white" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <main className="relative h-[var(--app-height,100vh)] overflow-hidden bg-primary text-primary" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {isDragging && (
-        <div className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-3xl border-2 border-dashed border-[#00d97e]/60 bg-[#02100a]/80 backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-xl border-2 border-dashed border-accent-primary bg-surface backdrop-blur-sm">
           <div className="text-center">
-            <p className="text-lg font-bold text-[#00d97e]">Drop to analyze</p>
-            <p className="mt-1 text-sm text-white/55">PDF, images, X-rays, scans, or a whole folder</p>
+            <p className="text-lg font-bold text-accent">Drop to analyze</p>
+            <p className="mt-1 text-sm text-secondary">PDF, images, X-rays, scans, or a whole folder</p>
           </div>
         </div>
       )}
       <div className="flex h-full flex-col">
         {/* Header */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/[0.08] px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5 text-white no-underline">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#00d97e] text-[#03120a]"><PulseIcon /></span>
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-primary px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5 text-primary no-underline">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent-primary text-primary"><PulseIcon /></span>
             <span className="text-sm font-extrabold tracking-tight">vaidy</span>
           </Link>
-          <div className="flex items-center gap-2.5 text-[11px] text-white/50">
+          <div className="flex items-center gap-2.5 text-[11px] text-secondary">
             {shouldUseDemoReplies && (
-              <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2.5 py-1 font-semibold text-amber-100">
+              <span className="rounded-full border border-status-warning/25 bg-status-warning/10 px-2.5 py-1 font-semibold text-status-warning">
                 Demo mode
               </span>
             )}
-            <Link href="/dashboard" className="hidden rounded-lg border border-white/[0.09] px-2.5 py-1.5 font-semibold text-white/70 transition hover:border-[#00d97e]/40 hover:text-white sm:inline-flex">
+            <Link href="/dashboard" className="hidden rounded-lg border border-border px-2.5 py-1.5 font-semibold text-secondary transition hover:border-accent-primary hover:text-primary sm:inline-flex">
               Dashboard
             </Link>
-            <div className="hidden rounded-lg border border-white/[0.08] bg-white/[0.035] p-0.5 sm:flex">
+            <div className="hidden rounded-lg border border-border bg-surface p-0.5 sm:flex">
               {languageOptions.map((o) => (
-                <button key={o.value} type="button" onClick={() => selectLanguage(o.value)} className={`rounded-md px-2 py-1 font-semibold transition ${languagePreference === o.value ? "bg-[#00d97e] text-[#03120a]" : "text-white/50 hover:text-white"}`}>{o.label}</button>
+                <button key={o.value} type="button" onClick={() => selectLanguage(o.value)} className={`rounded-md px-2 py-1 font-semibold transition ${languagePreference === o.value ? "bg-accent-primary text-primary" : "text-secondary hover:bg-elevated hover:text-primary"}`}>{o.label}</button>
               ))}
             </div>
             <span className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${connectionDotClass}`} />{connectionLabel}</span>
@@ -492,30 +492,30 @@ export default function AssistantConsole() {
           </div>
 
           {/* Bottom panel */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#050608] via-[#050608]/95 to-transparent px-4 pb-3 pt-8">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--bg-primary)] via-[color-mix(in_srgb,var(--bg-primary)_95%,transparent)] to-transparent px-4 pb-3 pt-8">
             <div className="mx-auto max-w-3xl space-y-2">
               {uploads.length > 0 && <UploadTray uploads={uploads} onDismiss={(id) => setUploads((c) => c.filter((i) => i.id !== id))} />}
               {freshUpload && !activeUploads.length && <FreshUploadChip fresh={freshUpload} onClear={clearFreshUpload} />}
               {!hasUserMessages && !uploads.length && (
                 <div className="flex flex-wrap gap-1.5">
                   {promptChips.map((p) => (
-                    <button key={p} type="button" onClick={() => sendMessage(p)} disabled={isStreaming} className="rounded-full border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-[11px] text-white/55 transition hover:border-[#00d97e]/40 hover:text-white disabled:opacity-40">{p}</button>
+                    <button key={p} type="button" onClick={() => sendMessage(p)} disabled={isStreaming} className="rounded-full border border-border bg-surface px-3 py-1.5 text-[11px] text-secondary transition hover:border-accent-primary hover:bg-elevated hover:text-primary disabled:opacity-40">{p}</button>
                   ))}
                 </div>
               )}
-              <form onSubmit={submit} className="flex items-end gap-1.5 rounded-2xl border border-white/[0.1] bg-white/[0.055] p-1.5 shadow-[0_18px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+              <form onSubmit={submit} className="flex items-end gap-1.5 rounded-lg border border-border bg-surface p-1.5 shadow-[0_18px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl focus-within:border-accent-primary focus-within:shadow-accent-glow">
                 <input ref={fileInputRef} type="file" multiple accept={DEFAULT_ACCEPT} className="hidden" onChange={(e) => handleFileList(e.target.files)} />
                 <input ref={folderInputRef} type="file" multiple className="hidden" {...{ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>} onChange={(e) => handleFileList(e.target.files)} />
-                <button type="button" onClick={openFileUpload} disabled={isProcessing} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white/55 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-40" aria-label="Upload files" title="Upload files"><UploadIcon /></button>
-                <button type="button" onClick={openFolderUpload} disabled={isProcessing} className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl text-white/55 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-40 sm:grid" aria-label="Upload folder" title="Upload folder"><FolderIcon /></button>
-                <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={onInputKeyDown} rows={1} placeholder="Ask Vaidy anything, or drop a report..." className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 py-2.5 text-sm leading-6 text-white outline-none placeholder:text-white/30" disabled={isStreaming} />
+                <button type="button" onClick={openFileUpload} disabled={isProcessing} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-secondary transition hover:bg-elevated hover:text-primary disabled:opacity-40" aria-label="Upload files" title="Upload files"><UploadIcon /></button>
+                <button type="button" onClick={openFolderUpload} disabled={isProcessing} className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg text-secondary transition hover:bg-elevated hover:text-primary disabled:opacity-40 sm:grid" aria-label="Upload folder" title="Upload folder"><FolderIcon /></button>
+                <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={onInputKeyDown} rows={1} placeholder="Ask Vaidy anything, or drop a report..." className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 py-2.5 text-sm leading-6 text-primary outline-none placeholder:text-muted" disabled={isStreaming} />
                 {isStreaming ? (
-                  <button type="button" onClick={stopStreaming} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.09] text-white transition hover:bg-white/[0.16]" aria-label="Stop" title="Stop"><StopIcon /></button>
+                  <button type="button" onClick={stopStreaming} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-elevated text-primary transition hover:bg-border" aria-label="Stop" title="Stop"><StopIcon /></button>
                 ) : (
-                  <button type="submit" disabled={!input.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#00d97e] text-[#03120a] transition hover:bg-[#2ff0a0] disabled:cursor-default disabled:opacity-45" aria-label="Send" title="Send"><SendIcon /></button>
+                  <button type="submit" disabled={!input.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-primary text-primary transition hover:bg-accent-secondary disabled:cursor-default disabled:opacity-45" aria-label="Send" title="Send"><SendIcon /></button>
                 )}
               </form>
-              <p className="text-center text-[10px] text-white/25">
+              <p className="text-center text-[10px] text-muted">
                 {shouldUseDemoReplies ? `Demo CBC: Rohan, 28M · ${streamLabel}` : statusError ? statusError : status ? `Reports: ${status.report_count} · Memory: ${status.memory?.entries ?? "..."} · ${streamLabel}` : `Connecting... · ${streamLabel}`}
               </p>
             </div>
@@ -531,19 +531,19 @@ export default function AssistantConsole() {
 function Intro({ status, streamLabel }: { status: VaidyStatus | null; streamLabel: string }) {
   return (
     <div className="flex min-h-[calc(100vh-320px)] flex-col justify-center pb-6 pt-4">
-      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#00d97e]/70">Vaidy Health Agent</p>
-      <h1 className="mt-3 max-w-2xl text-2xl font-extrabold leading-tight text-white sm:text-4xl">
+      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent/70">Vaidy Health Agent</p>
+      <h1 className="mt-3 max-w-2xl text-2xl font-extrabold leading-tight text-primary sm:text-4xl">
         Upload anything.<br />Get answers that remember.
       </h1>
-      <p className="mt-4 max-w-lg text-sm leading-7 text-white/50">
+      <p className="mt-4 max-w-lg text-sm leading-7 text-secondary">
         Drop a blood report, prescription, X-ray, CT scan, or a whole folder. Vaidy reads it, links it to this chat, and answers in plain language.
       </p>
-      <div className="mt-4 flex flex-wrap gap-2 text-[10px] text-white/40">
+      <div className="mt-4 flex flex-wrap gap-2 text-[10px] text-muted">
         <Chip label="Reports" value={status ? String(status.report_count) : "..."} />
         <Chip label="Memory" value={status?.memory ? String(status.memory.entries) : "..."} />
         <Chip label="Stream" value={streamLabel} />
       </div>
-      <Link href="/chat?demo=true" className="mt-5 inline-flex w-fit items-center gap-2 rounded-full border border-[#00d97e]/24 bg-[#00d97e]/10 px-4 py-2 text-xs font-bold text-[#7dffbf] transition hover:border-[#00d97e]/45 hover:bg-[#00d97e]/15">
+      <Link href="/chat?demo=true" className="mt-5 inline-flex w-fit items-center gap-2 rounded-full border border-accent-primary/24 bg-accent-glow px-4 py-2 text-xs font-bold text-accent transition hover:border-accent-primary hover:bg-elevated">
         Try demo
         <span aria-hidden="true">→</span>
       </Link>
@@ -553,14 +553,14 @@ function Intro({ status, streamLabel }: { status: VaidyStatus | null; streamLabe
 
 function DemoReportBanner({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#00d97e]/25 bg-[#00d97e]/10 px-3.5 py-2.5 text-sm text-[#c8ffe1] shadow-[0_12px_40px_rgba(0,217,126,0.08)]">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-accent-primary/25 bg-accent-glow px-3.5 py-2.5 text-sm text-secondary shadow-[0_12px_40px_var(--accent-glow)]">
       <span className="flex min-w-0 items-center gap-2.5">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#00d97e]/15 text-[#00d97e]">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-glow text-accent">
           <DocIcon />
         </span>
         <span className="font-semibold leading-5">{DEMO_REPORT_LABEL}</span>
       </span>
-      <button type="button" onClick={onDismiss} className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[#c8ffe1]/65 transition hover:bg-[#00d97e]/15 hover:text-white" aria-label="Dismiss report loaded banner">
+      <button type="button" onClick={onDismiss} className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-elevated hover:text-primary" aria-label="Dismiss report loaded banner">
         &times;
       </button>
     </div>
@@ -569,21 +569,21 @@ function DemoReportBanner({ onDismiss }: { onDismiss: () => void }) {
 
 function MessageBlock({ message }: { message: ChatRecord }) {
   if (message.role === "system") {
-    const cls = message.tone === "error" ? "border-red-400/20 bg-red-400/[0.05] text-red-200/75"
-      : message.tone === "success" ? "border-[#00d97e]/20 bg-[#00d97e]/[0.06] text-white/70"
-      : "border-white/[0.07] bg-white/[0.03] text-white/45";
+    const cls = message.tone === "error" ? "border-status-critical/20 bg-status-critical/5 text-status-critical"
+      : message.tone === "success" ? "border-accent-primary/20 bg-accent-glow text-secondary"
+      : "border-border bg-surface text-muted";
     return <div className={`mx-auto max-w-xl rounded-xl border px-3.5 py-2.5 text-center text-xs ${cls}`}>{message.content}</div>;
   }
   const isUser = message.role === "user";
   return (
     <article className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={isUser ? "max-w-[80%]" : "max-w-full sm:max-w-[90%]"}>
-        <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-[0.15em] ${isUser ? "text-right text-white/25" : "text-[#00d97e]/60"}`}>
+        <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-[0.15em] ${isUser ? "text-right text-muted" : "text-accent/60"}`}>
           {isUser ? "You" : "Vaidy"}
         </div>
         <div className={isUser
-          ? "rounded-2xl rounded-tr-md border border-[#00d97e]/18 bg-[#00d97e]/10 px-3.5 py-2.5 text-[13px] leading-7 text-white"
-          : "text-[14px] leading-7 text-white/80"
+          ? "rounded-2xl rounded-tr-md bg-accent-primary px-3.5 py-2.5 text-[13px] leading-7 text-primary"
+          : "rounded-2xl rounded-tl-md bg-elevated px-3.5 py-2.5 text-[14px] leading-7 text-primary"
         }>
           {isUser ? (
             <span className="whitespace-pre-wrap">{message.content}</span>
@@ -595,7 +595,7 @@ function MessageBlock({ message }: { message: ChatRecord }) {
         </div>
         {message.evidence && message.evidence.length > 0 && !isUser && <EvidenceRow evidence={message.evidence} />}
         {message.model && !isUser && (
-          <p className="mt-2 text-[10px] text-white/20">
+          <p className="mt-2 text-[10px] text-muted">
             {message.model === "unavailable" ? "local fallback" : message.model === "stopped" ? "stopped" : message.model}
           </p>
         )}
@@ -607,9 +607,9 @@ function MessageBlock({ message }: { message: ChatRecord }) {
 function ThinkingDots() {
   return (
     <span className="inline-flex items-center gap-1 py-1">
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00d97e]/60" style={{ animationDelay: "0ms" }} />
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00d97e]/60" style={{ animationDelay: "200ms" }} />
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00d97e]/60" style={{ animationDelay: "400ms" }} />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary/60" style={{ animationDelay: "0ms" }} />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary/60" style={{ animationDelay: "200ms" }} />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary/60" style={{ animationDelay: "400ms" }} />
     </span>
   );
 }
@@ -625,7 +625,7 @@ function MarkdownText({ text }: { text: string }) {
         const content = isBullet ? trimmed.slice(2) : line;
         const formatted = formatInline(content);
         if (isBullet) {
-          return <span key={i} className="block pl-3 before:absolute before:-ml-3 before:content-['•'] before:text-[#00d97e]/50">{formatted}{i < lines.length - 1 && "\n"}</span>;
+          return <span key={i} className="block pl-3 before:absolute before:-ml-3 before:content-['•'] before:text-accent/50">{formatted}{i < lines.length - 1 && "\n"}</span>;
         }
         return <span key={i}>{formatted}{i < lines.length - 1 && "\n"}</span>;
       })}
@@ -646,7 +646,7 @@ function formatInline(text: string) {
     parts.push({ bold: remaining.slice(start + 2, end) });
     remaining = remaining.slice(end + 2);
   }
-  return parts.map((p, i) => typeof p === "string" ? <span key={i}>{p}</span> : <strong key={i} className="font-semibold text-white">{p.bold}</strong>);
+  return parts.map((p, i) => typeof p === "string" ? <span key={i}>{p}</span> : <strong key={i} className="font-semibold text-primary">{p.bold}</strong>);
 }
 
 function EvidenceRow({ evidence }: { evidence: EvidenceHit[] }) {
@@ -657,16 +657,16 @@ function EvidenceRow({ evidence }: { evidence: EvidenceHit[] }) {
   if (!labels.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1">
-      {labels.map((l) => <span key={l} className="rounded-full border border-white/[0.07] bg-white/[0.025] px-2 py-0.5 text-[9px] text-white/35">{l}</span>)}
+      {labels.map((l) => <span key={l} className="rounded-full border border-border bg-surface px-2 py-0.5 text-[9px] text-muted">{l}</span>)}
     </div>
   );
 }
 
 function UploadTray({ uploads, onDismiss }: { uploads: UploadItem[]; onDismiss: (id: string) => void }) {
   return (
-    <div className="space-y-1 rounded-xl border border-white/[0.07] bg-white/[0.025] p-1.5">
+    <div className="space-y-1 rounded-xl border border-border bg-surface p-1.5">
       {uploads.slice(-5).map((item) => <UploadRow key={item.id} item={item} onDismiss={onDismiss} />)}
-      {uploads.length > 5 && <p className="px-2 text-[9px] text-white/30">+{uploads.length - 5} more</p>}
+      {uploads.length > 5 && <p className="px-2 text-[9px] text-muted">+{uploads.length - 5} more</p>}
     </div>
   );
 }
@@ -674,18 +674,18 @@ function UploadTray({ uploads, onDismiss }: { uploads: UploadItem[]; onDismiss: 
 function UploadRow({ item, onDismiss }: { item: UploadItem; onDismiss: (id: string) => void }) {
   const done = item.stage === "done";
   const failed = item.stage === "error" || item.stage === "cancelled";
-  const barCls = failed ? "bg-red-400/70" : done ? "bg-[#00d97e]" : "bg-[#00d97e]/60 animate-pulse";
+  const barCls = failed ? "bg-status-critical/70" : done ? "bg-accent-primary" : "bg-accent-primary/60 animate-pulse";
   return (
     <div className="rounded-lg px-2 py-1.5">
       <div className="flex items-center gap-2">
-        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/[0.05] text-white/50">{item.isImage ? <ScanIcon /> : <DocIcon />}</span>
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-elevated text-secondary">{item.isImage ? <ScanIcon /> : <DocIcon />}</span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[11px] font-medium text-white/70">{item.label}</p>
-          <p className="text-[9px] text-white/30">{formatBytes(item.size)}{formatBytes(item.size) ? " · " : ""}{stageLabel(item.stage, item.isImage)}</p>
+          <p className="truncate text-[11px] font-medium text-primary">{item.label}</p>
+          <p className="text-[9px] text-muted">{formatBytes(item.size)}{formatBytes(item.size) ? " · " : ""}{stageLabel(item.stage, item.isImage)}</p>
         </div>
-        {(done || failed) && <button type="button" onClick={() => onDismiss(item.id)} className="text-[9px] text-white/30 hover:text-white/60">✕</button>}
+        {(done || failed) && <button type="button" onClick={() => onDismiss(item.id)} className="text-[9px] text-muted hover:text-secondary">✕</button>}
       </div>
-      <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-white/[0.05]">
+      <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-elevated">
         <div className={`h-full rounded-full transition-all duration-500 ${barCls}`} style={{ width: `${item.percent}%` }} />
       </div>
     </div>
@@ -694,19 +694,19 @@ function UploadRow({ item, onDismiss }: { item: UploadItem; onDismiss: (id: stri
 
 function FreshUploadChip({ fresh, onClear }: { fresh: FreshUpload; onClear: () => void }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-[#00d97e]/18 bg-[#00d97e]/[0.05] px-3 py-2 text-[11px] text-white/60">
+    <div className="flex items-center justify-between rounded-xl border border-accent-primary/18 bg-accent-glow px-3 py-2 text-[11px] text-secondary">
       <span className="flex items-center gap-2">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#00d97e] animate-pulse" />
+        <span className="h-1.5 w-1.5 rounded-full bg-accent-primary animate-pulse" />
         Report #{fresh.report_id} linked — say &ldquo;analyze this&rdquo; and I&apos;ll use it
       </span>
-      <button type="button" onClick={onClear} className="text-white/30 hover:text-white/60">Unlink</button>
+      <button type="button" onClick={onClear} className="text-muted hover:text-secondary">Unlink</button>
     </div>
   );
 }
 
 function ProcessNote({ summary }: { summary: ProcessInputSummary }) {
   return (
-    <div className="mx-auto max-w-xl rounded-xl border border-[#00d97e]/12 bg-[#00d97e]/[0.04] px-3.5 py-2.5 text-xs text-white/55">
+    <div className="mx-auto max-w-xl rounded-xl border border-accent-primary/12 bg-accent-glow px-3.5 py-2.5 text-xs text-secondary">
       Input: {summary.processed.length} processed, {summary.skipped.length} skipped, {summary.failed.length} failed.
     </div>
   );
@@ -739,7 +739,7 @@ function stageLabel(stage: UploadStage, isImage: boolean) {
 }
 
 function Chip({ label, value }: { label: string; value: string }) {
-  return <span className="rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[10px]"><span className="text-white/25">{label}: </span><span className="text-white/55">{value}</span></span>;
+  return <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-[10px]"><span className="text-muted">{label}: </span><span className="text-secondary">{value}</span></span>;
 }
 
 function shortPath(v: string) { const p = v.split("\\"); return p[p.length - 1] || v; }

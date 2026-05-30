@@ -1,12 +1,12 @@
 type BadgeVariant = "teal" | "amber" | "red" | "slate" | "blue" | "purple";
 
 const styles: Record<BadgeVariant, string> = {
-  teal: "border-teal-500/30 bg-teal-500/10 text-teal-300",
-  amber: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-  red: "border-red-500/30 bg-red-500/10 text-red-300",
-  slate: "border-white/10 bg-white/[0.04] text-slate-400",
-  blue: "border-blue-500/30 bg-blue-500/10 text-blue-300",
-  purple: "border-purple-500/30 bg-purple-500/10 text-purple-300",
+  teal: "border-accent-primary/30 bg-accent-glow text-accent",
+  amber: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+  red: "border-status-critical/30 bg-status-critical/10 text-status-critical",
+  slate: "border-border bg-elevated text-secondary",
+  blue: "border-status-improving/30 bg-status-improving/10 text-status-improving",
+  purple: "border-border bg-elevated text-secondary",
 };
 
 export function Badge({

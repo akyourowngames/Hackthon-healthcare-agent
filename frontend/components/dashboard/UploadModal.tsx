@@ -81,15 +81,15 @@ export function UploadModal({ open, onClose }: UploadModalProps) {
         onDrop={handleDrop}
         className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-10 text-center transition ${
           dragOver
-            ? "border-teal-500 bg-teal-500/10"
-            : "border-teal-500/40 bg-[#0d0d12] hover:border-teal-500"
+            ? "border-accent-primary bg-accent-glow"
+            : "border-border border-dashed bg-surface hover:border-accent-primary"
         }`}
       >
         <motion.div animate={dragOver ? { y: [0, -4, 0] } : {}} transition={{ repeat: dragOver ? Infinity : 0, duration: 0.6 }}>
-          <Upload className="mx-auto h-10 w-10 text-teal-400" />
+          <Upload className="mx-auto h-10 w-10 text-accent" />
         </motion.div>
-        <p className="mt-3 text-sm font-semibold text-white">Drag & drop your report here</p>
-        <p className="mt-1 text-sm text-slate-500">or click to browse</p>
+        <p className="mt-3 text-sm font-semibold text-primary">Drag & drop your report here</p>
+        <p className="mt-1 text-sm text-secondary">or click to browse</p>
         <p className="mt-2 text-xs text-slate-600">PDF, JPG, PNG · Max 10MB</p>
         <input
           type="file"
@@ -100,13 +100,13 @@ export function UploadModal({ open, onClose }: UploadModalProps) {
       </label>
 
       {file ? (
-        <div className="mt-4 flex items-center gap-3 rounded-lg border border-white/[0.08] bg-[#161616] p-3">
-          <FileText className="h-5 w-5 shrink-0 text-teal-400" />
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-border bg-elevated p-3">
+          <FileText className="h-5 w-5 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">{file.name}</p>
-            <p className="text-xs text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            <p className="truncate text-sm font-medium text-primary">{file.name}</p>
+            <p className="text-xs text-secondary">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
           </div>
-          <button type="button" onClick={() => setFile(null)} className="text-slate-500 hover:text-white" aria-label="Remove file">
+          <button type="button" onClick={() => setFile(null)} className="text-secondary hover:text-primary" aria-label="Remove file">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -115,7 +115,7 @@ export function UploadModal({ open, onClose }: UploadModalProps) {
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="mb-1 block text-slate-400">Lab Name</span>
-          <select value={lab} onChange={(e) => setLab(e.target.value)} className="auth-select w-full min-h-[44px] rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 text-slate-300">
+          <select value={lab} onChange={(e) => setLab(e.target.value)} className="auth-select w-full min-h-[44px] rounded-lg border border-border bg-surface px-3 text-secondary">
             {LAB_OPTIONS.map((l) => (
               <option key={l}>{l}</option>
             ))}
@@ -123,7 +123,7 @@ export function UploadModal({ open, onClose }: UploadModalProps) {
         </label>
         <label className="block text-sm">
           <span className="mb-1 block text-slate-400">Report Type</span>
-          <select value={reportType} onChange={(e) => setReportType(e.target.value)} className="auth-select w-full min-h-[44px] rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 text-slate-300">
+          <select value={reportType} onChange={(e) => setReportType(e.target.value)} className="auth-select w-full min-h-[44px] rounded-lg border border-border bg-surface px-3 text-secondary">
             {REPORT_TYPE_OPTIONS.map((t) => (
               <option key={t}>{t}</option>
             ))}
@@ -135,7 +135,7 @@ export function UploadModal({ open, onClose }: UploadModalProps) {
             type="date"
             value={reportDate}
             onChange={(e) => setReportDate(e.target.value)}
-            className="w-full min-h-[44px] rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 text-slate-300 outline-none focus:ring-2 focus:ring-teal-500/30"
+            className="w-full min-h-[44px] rounded-lg border border-border bg-surface px-3 text-secondary outline-none focus:ring-2 focus:border-accent-primary focus:shadow-accent-glow"
           />
         </label>
         <label className="block text-sm sm:col-span-2">
@@ -145,19 +145,19 @@ export function UploadModal({ open, onClose }: UploadModalProps) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Any context for AI analysis..."
             rows={3}
-            className="w-full rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/30"
+            className="w-full rounded-lg border border-white/[0.08] bg-[#0d0d12] px-3 py-2 text-sm text-primary outline-none focus:ring-2 focus:border-accent-primary focus:shadow-accent-glow"
           />
         </label>
       </div>
 
       {uploading ? (
         <div className="mt-4">
-          <div className="mb-2 flex justify-between text-xs text-slate-500">
+          <div className="mb-2 flex justify-between text-xs text-secondary">
             <span>Analyzing with AI…</span>
             <span>{Math.min(progress, 100)}%</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all" style={{ width: `${Math.min(progress, 100)}%` }} />
+          <div className="h-2 overflow-hidden rounded-full bg-elevated">
+            <div className="h-full rounded-full bg-accent-primary transition-all" style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
         </div>
       ) : (

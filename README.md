@@ -1,124 +1,219 @@
-# Vaidy Backend
+<div align="center">
 
-Local-first AI healthcare backend for Indian lab reports.
+<br/>
 
-## Setup
+<img src="https://img.shields.io/badge/vaidy-AI%20Health%20Copilot-34d399?style=for-the-badge" alt="Vaidy"/>
 
-```powershell
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
+# Vaidy
+
+### Your AI Health Copilot — Built for India 🇮🇳
+
+*Not a chatbot. A health brain that reads your reports, remembers your history, and explains everything in plain language.*
+
+<br/>
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-vaidy.vercel.app-34d399?style=flat-square&logo=vercel&logoColor=white)](https://vaidy.vercel.app/)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Hackthon--healthcare--agent-181717?style=flat-square&logo=github)](https://github.com/akyourowngames/Hackthon-healthcare-agent.git)
+[![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=nextdotjs)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Framer Motion](https://img.shields.io/badge/Framer%20Motion-12-0055FF?style=flat-square&logo=framer&logoColor=white)](https://www.framer.com/motion/)
+
+</div>
+
+---
+
+## 🖼️ Preview
+
+<div align="center">
+  <a href="https://vaidy.vercel.app/" target="_blank">
+    <img src="https://raw.githubusercontent.com/akyourowngames/Hackthon-healthcare-agent/main/vaidy-landing.png" alt="Vaidy Landing Page — Your health, finally decoded." width="100%"/>
+  </a>
+  <br/>
+  <sub>Live at <a href="https://vaidy.vercel.app/">vaidy.vercel.app</a></sub>
+</div>
+
+---
+
+## 📖 Overview
+
+India has 1.4 billion people and a significant gap between medical knowledge and patients. Lab reports arrive full of jargon, reference ranges are context-free, and most people have no easy way to understand what their own health data means.
+
+**Vaidy** bridges that gap. It acts as a personal health intelligence layer — reading any diagnostic report you upload, building a longitudinal health timeline, detecting trends across visits, and answering your questions in plain language. Supports all major Indian diagnostic labs including Apollo, Thyrocare, Lal Path Labs, Dr. Lal and 50+ more.
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 📄 **Reads Any Report** | Blood tests, MRIs, prescriptions — in English or Hindi |
+| 🧠 **Remembers Everything** | Builds your personal health timeline automatically |
+| 💬 **Plain Language Always** | No jargon. Explanations anyone can follow |
+| 📈 **Trend Detection** | Spots patterns and anomalies across reports over time |
+| 🤖 **Ask Anything** | Chat with your full health history like a conversation |
+| 🇮🇳 **India-First** | Understands Apollo, Thyrocare, Lal Path Labs, Dr. Lal & 50+ Indian lab formats |
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+| Technology | Version | Purpose |
+|---|---|---|
+| [Next.js](https://nextjs.org/) | 14 (App Router) | React framework, SSR/SSG |
+| [React](https://react.dev/) | 18 | UI library |
+| [TypeScript](https://www.typescriptlang.org/) | 5 | Type safety |
+| [Tailwind CSS](https://tailwindcss.com/) | 3.4 | Utility-first styling |
+| [Framer Motion](https://www.framer.com/motion/) | 12 | Animations & transitions |
+| [Inter](https://fonts.google.com/specimen/Inter) | — | Typography (via `next/font`) |
+
+### Design System
+- **Color palette** — Deep void black (`#050508`) background with emerald (`#34d399`) and teal (`#5eead4`) accent colors
+- **Glass morphism** — Frosted glass cards using `backdrop-blur` and semi-transparent borders
+- **Custom animations** — `float`, `pulse-glow`, `shimmer`, `wave` keyframes in Tailwind config and CSS
+- **Responsive** — Mobile-first layout, collapsible navigation, horizontal-scroll timeline on small screens
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js `>= 18.17.0`
+- npm / yarn / pnpm / bun
+
+### Installation
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/akyourowngames/Hackthon-healthcare-agent.git
+cd Hackthon-healthcare-agent/frontend
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the development server
+npm run dev
 ```
 
-Set `NVIDIA_API_KEY` in `.env`, then run:
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-```powershell
-python -m extractor.main samples/report1.pdf
+### Available Scripts
+
+```bash
+npm run dev      # Start development server with hot reload
+npm run build    # Create production build
+npm run start    # Serve production build locally
+npm run lint     # Run ESLint
 ```
 
-## Extractor
+---
 
-The extraction pipeline saves:
+## 📁 Project Structure
 
-- `output/<pdf-name>/debug_text.txt` for the best local text layer found.
-- `output/<pdf-name>/debug_quality.json` for the text quality gate.
-- `output/<pdf-name>/<pdf-name>.json` for the clean validated report.
-- `output/<pdf-name>/report.json` as the latest report path for that run.
-
-## Extraction Order
-
-1. Extract the local PyMuPDF text layer per page for fast page triage.
-2. Convert the PDF to page images with the DPI from `extractor/extraction_policy.md`.
-3. Send only locally relevant pages to NVIDIA NIM for structured JSON; scanned PDFs with no text layer still go through image extraction.
-4. Retry NIM image calls using the retry settings in `extractor/extraction_policy.md`.
-5. Fill missing fields from local text when Docling or PyMuPDF text is usable.
-6. Fall back to PaddleOCR plus rule-based parsing when the text layer is poor.
-7. Normalize biomarker names from `extractor/biomarker_aliases.md`.
-8. Validate output with Pydantic before saving.
-
-The default NIM model, timeout, retry counts, page-filter thresholds, and image
-DPI live in `extractor/extraction_policy.md`. The default model is a smaller
-available NVIDIA vision model so ordinary reports do not start on Maverick.
-Environment variables in `.env` can override NIM provider settings for one
-machine without changing code.
-
-## Terminal Healthcare Agent
-
-The terminal agent stores reports and retrieval chunks in a local SQLite
-database by default. It does not require Supabase.
-
-```powershell
-python healthcare_agent\cli.py
+```
+frontend/
+├── app/
+│   ├── globals.css          # Global styles, CSS variables, keyframe animations
+│   ├── layout.tsx           # Root layout with Inter font & metadata
+│   └── page.tsx             # Main page — assembles all sections
+│
+├── components/
+│   ├── Navbar.tsx           # Sticky navbar with animated mobile menu
+│   ├── Hero.tsx             # Full-screen hero with glow orbs & particle field
+│   ├── GlowOrbs.tsx         # Animated radial gradient background orbs
+│   ├── ParticleField.tsx    # Deterministic SVG particle animation
+│   ├── UploadPreview.tsx    # Drag-and-drop report upload UI
+│   ├── ExplainDemo.tsx      # Typewriter AI explanation demo
+│   ├── HealthTimeline.tsx   # Horizontal scrollable health history timeline
+│   ├── FeatureCards.tsx     # 6-card animated feature grid
+│   ├── FinalCTA.tsx         # Conversion section with animated CTA button
+│   └── Footer.tsx           # Footer with navigation links
+│
+├── public/                  # Static assets (SVG icons)
+├── tailwind.config.ts       # Extended design tokens (colors, fonts, animations)
+├── postcss.config.mjs       # PostCSS configuration
+├── next.config.mjs          # Next.js configuration
+└── tsconfig.json            # TypeScript configuration
 ```
 
-When the shell opens, put report files in `input/` and type `process input`.
-Supported files are configured in `healthcare_agent/agent_policy.md`; the
-default set is PDF, JSON, TXT, and MD. Extraction artifacts are written to
-`output/`, while searchable report memory lives in local SQLite. Normal chat
-streams token-by-token from the configured NVIDIA chat model. Maverick remains
-configured as the deep model, while the default fast lane uses
-`meta/llama-3.1-8b-instruct` for low-latency casual and report answers.
-Report evidence is attached only for report/document questions.
+---
 
-The same behavior is also available as explicit commands:
+## 🎨 Design Highlights
 
-```powershell
-python -m healthcare_agent.cli status
-python -m healthcare_agent.cli process-input --local-only
-python -m healthcare_agent.cli ingest samples/report1.pdf --local-only
-python -m healthcare_agent.cli import-json outputs/Z615.json --source-path C:\Users\anime\Downloads\Z615.pdf
-python -m healthcare_agent.cli dedupe
-python -m healthcare_agent.cli list
-python -m healthcare_agent.cli search cholesterol
-python -m healthcare_agent.cli ask "what biomarkers are high or low"
-python -m healthcare_agent.cli ask "hi" --language hi
+### Animations
+- **Particle Field** — Uses a seeded pseudo-random number generator so particles render identically on server and client (no hydration mismatch)
+- **Shimmer Border** — CSS `::before` pseudo-element with animated `background-position` creates a traveling light effect on the upload card
+- **Glow Orbs** — Layered `float` and `wave` animations create organic, depth-of-field-like background motion in the hero
+- **Typewriter Effect** — `useEffect` interval drives character-by-character text reveal with regex-based keyword highlighting
+
+### Accessibility
+- All interactive elements have `focus-visible` ring styles
+- Decorative SVGs marked `aria-hidden="true"`
+- Mobile navigation toggle has `aria-expanded` and `aria-controls`
+- Timeline rendered as a semantic `<ol>` with `<article>` cards
+
+---
+
+## 🌐 Deployment
+
+The project is deployed on **Vercel** via automatic GitHub integration.
+
+To deploy your own instance:
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy from the frontend directory
+cd frontend
+vercel
 ```
 
-Fast inventory, latest-patient, latest-report-name, upload-help, and greeting
-answers are handled locally through phrases in
-`healthcare_agent/agent_commands.md`. CLI and web chat therefore read the same
-SQLite-backed report memory and do not wait on a model for those common turns.
-Standalone extraction also stores successful reports into the same agent
-database by default:
+Or connect your fork to [vercel.com](https://vercel.com) for automatic deployments on every push to `main`.
 
-```powershell
-python -m extractor.main C:\Users\anime\Downloads\Z615.pdf
+---
+
+## 🗺️ Roadmap
+
+- [ ] Backend API integration for real report parsing (OCR + LLM pipeline)
+- [ ] Hindi language UI support
+- [ ] Persistent health profile with authentication
+- [ ] PDF / image report ingestion (Apollo, Thyrocare, AIIMS formats)
+- [ ] Doctor-facing summary export
+- [ ] WhatsApp / SMS report upload flow for feature-phone users
+- [ ] Trend graphs with interactive charts (Recharts / D3)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how to get started:
+
+```bash
+# Fork the repo, then:
+git checkout -b feature/your-feature-name
+git commit -m "feat: add your feature"
+git push origin feature/your-feature-name
+# Open a Pull Request
 ```
 
-Use `--no-agent-store` when you only want extraction artifacts.
+Please follow the existing code style — TypeScript strict mode, Tailwind utility classes, and Framer Motion for all animations.
 
-## API Server
+---
 
-Run the same local agent behind an HTTP API:
+## 📄 License
 
-```powershell
-python -m healthcare_agent.api
-```
+This project was built for a healthcare hackathon. See [LICENSE](LICENSE) for details.
 
-The server defaults to `http://127.0.0.1:8000` and exposes:
+---
 
-- `GET /api/health`
-- `GET /api/status`
-- `GET /api/supabase/status`
-- `POST /api/process-input`
-- `POST /api/upload`
-- `GET /api/upload/progress/{job_id}`
-- `GET /api/reports`
-- `GET /api/reports/{report_id}`
-- `GET /api/dashboard/{user_id}`
-- `GET /api/biomarker/{user_id}/{biomarker_name}`
-- `GET /api/notifications/{user_id}`
-- `GET /api/search?q=cholesterol`
-- `POST /api/chat`
-- `POST /api/chat/stream`
-- `POST /api/share`
-- `GET /api/share/{token}`
+<div align="center">
 
-The streaming chat endpoint sends server-sent events with `meta`, `chunk`,
-`done`, `error`, and `ping` events. Host, port, CORS origins, warmup, and
-keepalive settings live in `healthcare_agent/api_policy.md`, with `.env`
-overrides for local machines.
+Made with ❤️ for India &nbsp;·&nbsp; Built at a Healthcare Hackathon
 
-## Supabase
+**[vaidy.vercel.app](https://vaidy.vercel.app/)**
 
 Vaidy stays local-first. Supabase is optional and mirrors the local SQLite data
 when enabled. Apply `supabase/schema.sql` in Supabase SQL editor, then set:

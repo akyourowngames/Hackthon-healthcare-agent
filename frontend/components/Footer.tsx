@@ -8,14 +8,14 @@ const footerLinks = [
 
 export default function Footer() {
   return (
-    <footer className="bg-[#030408] px-6 py-8 text-white border-t border-white/[0.06]">
+    <footer className="border-t border-border bg-primary px-6 py-8 text-muted">
       <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-center gap-4 text-center sm:justify-between sm:text-left">
         <div className="flex items-center gap-2">
           <span
-            className="h-5 w-5 rounded-md bg-gradient-to-br from-emerald-400 to-teal-300"
+            className="h-5 w-5 rounded-md bg-accent-primary"
             aria-hidden="true"
           />
-          <span className="text-[15px] font-bold tracking-[-0.03em]">vaidy</span>
+          <span className="text-[15px] font-bold tracking-[-0.03em] text-primary">vaidy</span>
         </div>
 
         <nav className="flex items-center gap-5" aria-label="Footer navigation">
@@ -23,14 +23,14 @@ export default function Footer() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-[13px] text-white/35 transition-colors hover:text-white"
+              className="text-[13px] text-secondary transition-colors hover:text-accent"
             >
               {link.label}
             </Link>
           ))}
         </nav>
 
-        <p className="text-xs text-white/20">
+        <p className="text-xs text-muted">
           (c) {new Date().getFullYear()} Vaidy. Built for India.
         </p>
       </div>

@@ -5,9 +5,9 @@ import type { MouseEvent } from "react";
 import { useWaitlist } from "@/components/WaitlistProvider";
 
 const orbs = [
-  { left: "-10%", top: "10%", size: 520, color: "rgba(0,217,126,0.12)", blur: 120, delay: 0 },
-  { left: "55%", top: "-5%", size: 460, color: "rgba(0,196,184,0.09)", blur: 130, delay: 2 },
-  { left: "30%", top: "60%", size: 380, color: "rgba(167,139,250,0.07)", blur: 140, delay: 4 },
+  { left: "-10%", top: "10%", size: 520, color: "rgba(16,185,129,0.12)", blur: 120, delay: 0 },
+  { left: "55%", top: "-5%", size: 460, color: "rgba(52,211,153,0.09)", blur: 130, delay: 2 },
+  { left: "30%", top: "60%", size: 380, color: "rgba(16,185,129,0.07)", blur: 140, delay: 4 },
 ];
 
 function scrollToAnchor(event: MouseEvent<HTMLAnchorElement>, href: string) {
@@ -22,7 +22,7 @@ export default function Hero() {
   const { openWaitlist } = useWaitlist();
 
   return (
-    <section id="hero" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg-void px-6 py-24 text-center">
+    <section id="hero" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-primary px-6 py-24 text-center">
       {orbs.map((orb) => (
         <motion.div
           key={`${orb.left}-${orb.top}`}
@@ -52,30 +52,30 @@ export default function Hero() {
         variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 } } }}
       >
         <motion.div
-          className="mb-8 inline-flex items-center gap-2 rounded-3xl border border-emerald-400/20 bg-emerald-400/[0.08] py-1.5 pl-2.5 pr-3.5"
+          className="mb-8 inline-flex items-center gap-2 rounded-full border border-accent-primary/20 bg-accent-glow py-1.5 pl-2.5 pr-3.5"
           variants={{ hidden: { opacity: 0, y: -12 }, visible: { opacity: 1, y: 0 } }}
           transition={{ duration: 0.5 }}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#00d97e]" />
-          <span className="text-[12.5px] font-semibold uppercase tracking-[0.04em] text-emerald-400/85">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent-primary shadow-[0_0_8px_var(--accent-primary)]" />
+          <span className="text-[12.5px] font-semibold uppercase tracking-[0.04em] text-accent">
             AI Health Copilot for India
           </span>
         </motion.div>
 
         <motion.h1
-          className="text-[clamp(3rem,8vw,6.5rem)] font-extrabold leading-[0.95] tracking-[-0.04em] text-white"
+          className="text-[clamp(3rem,8vw,6.5rem)] font-extrabold leading-[0.95] tracking-[-0.04em] text-primary"
           variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
           transition={{ duration: 0.7, delay: 0.1 }}
         >
           Your health,
           <br />
-          <span className="bg-gradient-to-br from-emerald-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-br from-accent-primary via-status-improving to-accent-secondary bg-clip-text text-transparent">
             finally decoded.
           </span>
         </motion.h1>
 
         <motion.p
-          className="mx-auto mt-7 max-w-[640px] text-[clamp(1rem,2.5vw,1.25rem)] leading-[1.7] text-white/55"
+          className="mx-auto mt-7 max-w-[640px] text-[clamp(1rem,2.5vw,1.25rem)] leading-[1.7] text-secondary"
           variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
           transition={{ duration: 0.7, delay: 0.25 }}
         >
@@ -91,8 +91,8 @@ export default function Hero() {
           <motion.button
             type="button"
             onClick={() => window.location.href = "/chat"}
-            className="inline-flex items-center gap-2 rounded-[32px] bg-emerald-400 px-7 py-3.5 text-[15px] font-bold text-[#03120a] shadow-[0_0_32px_rgba(0,217,126,0.35)]"
-            whileHover={{ scale: 1.04, boxShadow: "0 0 48px rgba(0,217,126,0.5)" }}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-7 py-3.5 text-[15px] font-bold text-primary shadow-[0_0_32px_var(--accent-glow)] hover:bg-accent-secondary"
+            whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
           >
             Open Assistant
@@ -101,7 +101,7 @@ export default function Hero() {
           <motion.a
             href="#demo"
             onClick={(event) => scrollToAnchor(event, "#demo")}
-            className="inline-flex items-center gap-2 rounded-[32px] border border-white/10 bg-white/[0.06] px-7 py-3.5 text-[15px] font-semibold text-white/80 no-underline"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-transparent px-7 py-3.5 text-[15px] font-semibold text-primary no-underline hover:bg-elevated"
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.97 }}
           >
@@ -119,18 +119,18 @@ export default function Hero() {
           transition={{ delay: 0.8 }}
         >
           {["Apollo", "Thyrocare", "Lal Path Labs", "Dr. Lal"].map((lab) => (
-            <span key={lab} className="text-[12.5px] tracking-[0.02em] text-white/30">
+            <span key={lab} className="text-[12.5px] tracking-[0.02em] text-muted">
               {lab}
             </span>
           ))}
-          <span className="text-xs text-white/20">+50 more labs</span>
+          <span className="text-xs text-muted">+50 more labs</span>
         </motion.div>
       </motion.div>
 
       <motion.a
         href="#features"
         onClick={(event) => scrollToAnchor(event, "#features")}
-        className="absolute bottom-7 left-1/2 z-10 -translate-x-1/2 text-white/30"
+        className="absolute bottom-7 left-1/2 z-10 -translate-x-1/2 text-muted"
         aria-label="Scroll to features"
         animate={{ y: [0, 8, 0] }}
         transition={{ duration: 2, repeat: Infinity }}

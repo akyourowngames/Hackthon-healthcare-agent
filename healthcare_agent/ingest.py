@@ -12,7 +12,10 @@ from extractor.utils import safe_stem, write_json
 from .config import AgentSettings, load_agent_settings
 from .store import (
     copy_source_to_storage,
+    file_fingerprint,
+    find_duplicate_report_id,
     find_report_id_by_source,
+    find_report_id_by_source_fingerprint,
     save_document,
     save_report,
     source_exists,
@@ -85,7 +88,34 @@ def process_single_file(
     existing_report_id = find_report_id_by_source(resolved, active_settings, user_id=user_id)
     if existing_report_id is not None:
         return {"path": str(resolved), "kind": "existing", "report_id": existing_report_id, "reason": "already_stored"}
+    fingerprint = file_fingerprint(resolved)
+    duplicate_report_id = find_report_id_by_source_fingerprint(
+        fingerprint["sha256"],
+        fingerprint["size"],
+        active_settings,
+        user_id=user_id,
+    )
+    if duplicate_report_id is not None:
+        return {
+            "path": str(resolved),
+            "kind": "duplicate",
+            "duplicate": True,
+            "report_id": duplicate_report_id,
+            "reason": "same_file",
+        }
     return _process_file(resolved, active_settings, local_only, user_id)
+
+
+def _duplicate_result(path: Path, report_id: int, reason: str) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "kind": "duplicate",
+        "duplicate": True,
+        "report_id": int(report_id),
+        "reason": reason,
+        "biomarkers": 0,
+        "findings": 0,
+    }
 
 
 def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id: str | None = None) -> dict[str, Any]:
@@ -94,6 +124,9 @@ def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id
     if extension == ".pdf":
         result = run_pipeline(path, output_dir=output_dir, local_only=local_only)
         payload = json.loads(Path(result["output_path"]).read_text(encoding="utf-8"))
+        duplicate_report_id = find_duplicate_report_id(payload, settings, user_id=user_id)
+        if duplicate_report_id is not None:
+            return _duplicate_result(path, duplicate_report_id, "same_report")
         copy_source_to_storage(path, settings)
         report_id = save_report(payload, path, result["output_path"], settings, user_id=user_id)
         return {
@@ -122,6 +155,9 @@ def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id
         Path(result["output_path"]).write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        duplicate_report_id = find_duplicate_report_id(payload, settings, user_id=user_id)
+        if duplicate_report_id is not None:
+            return _duplicate_result(path, duplicate_report_id, "same_report")
         copy_source_to_storage(path, settings)
         report_id = save_report(payload, path, result["output_path"], settings, user_id=user_id)
         return {
@@ -142,6 +178,9 @@ def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id
         payload = json.loads(path.read_text(encoding="utf-8"))
         output_path = output_dir / f"{safe_stem(path)}.json"
         write_json(output_path, payload)
+        duplicate_report_id = find_duplicate_report_id(payload, settings, user_id=user_id)
+        if duplicate_report_id is not None:
+            return _duplicate_result(path, duplicate_report_id, "same_report")
         report_id = save_report(payload, path, output_path, settings, user_id=user_id)
         return {
             "path": str(path),

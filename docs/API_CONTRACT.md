@@ -50,6 +50,7 @@ All paths are prefixed with `/api`.
 | --- | --- | --- | --- |
 | GET | `/api/reports` | — | `{ reports: ReportRow[] }` |
 | GET | `/api/reports/{report_id}` | path int | full report record incl. `report` JSON; 404 if missing |
+| POST | `/api/reports/deduplicate` | — | `{ removed, kept, removed_count }` |
 | POST | `/api/process-input` | `{ local_only: bool, user_id: str }` | `ProcessInputSummary` |
 
 ### Dashboard & analytics
@@ -75,7 +76,15 @@ All paths are prefixed with `/api`.
   "history": [{ "role": "user|assistant", "content": "string" }],
   "force_report_context": false,
   "session_id": "",
-  "language_preference": "auto|en|hi"
+  "user_id": "supabase-auth-user-id",
+  "language_preference": "auto|en|hi",
+  "profile": {
+    "full_name": "string",
+    "city": "string",
+    "blood_group": "string",
+    "conditions": ["string"],
+    "medications": "string"
+  }
 }
 ```
 
@@ -92,8 +101,8 @@ SSE event payloads:
 | --- | --- | --- | --- |
 | GET | `/api/memory/status` | — | memory assessment object |
 | GET | `/api/memory` | `?limit=50` | `{ entries: [] }` |
-| GET | `/api/memory/recall` | `?q=` (min 1), `?session_id=`, `?limit=` | `{ hits: MemoryHit[] }` |
-| POST | `/api/memory/remember` | `{ text, source, session_id, importance? }` | result object |
+| GET | `/api/memory/recall` | `?q=` (min 1), `?session_id=`, `?user_id=`, `?limit=` | `{ hits: MemoryHit[] }` |
+| POST | `/api/memory/remember` | `{ text, source, session_id, user_id, importance? }` | result object |
 
 ### Sharing
 
@@ -117,17 +126,18 @@ SSE event payloads:
 - `relative_path` (display label; defaults to filename)
 - `supabase_access_token` (user JWT, used for Supabase storage/table sync under that user)
 
-Upload SSE `status` stages: `received` → `reading` → `extracting` → `analyzing` → `done`.
+Upload SSE `status` stages: `received` → `reading` → `extracting` → `duplicate` (when the file/report already exists) → `analyzing` → `done`.
 `done` payload: `{ stage: "done", message, result, file_label }` where `result`
-includes `report_id`, `kind`, `biomarkers`, `findings`, `health_score`, `anomalies`, `is_image`.
+includes `report_id`, `kind`, `duplicate?`, `biomarkers`, `findings`, `health_score`, `anomalies`, `is_image`.
 
 ### Sessions
 
 | Method | Path | Query / Body | Response |
 | --- | --- | --- | --- |
-| POST | `/api/sessions/{session_id}/clear-active-report` | path | `{ ok, session_id }` |
-| GET | `/api/sessions/{session_id}/fresh-upload` | path | `{ ok, fresh_upload, report }` |
-| GET | `/api/sessions/{session_id}/messages` | `?limit=` | `{ messages: [] }` |
+| POST | `/api/sessions/{session_id}/clear-active-report` | `?user_id=` | `{ ok, session_id }` |
+| POST | `/api/sessions/{session_id}/attach-report` | `{ report_id: int, user_id?: string }` | `{ ok, session_id, fresh_upload, report }` |
+| GET | `/api/sessions/{session_id}/fresh-upload` | `?user_id=` | `{ ok, fresh_upload, report }` |
+| GET | `/api/sessions/{session_id}/messages` | `?limit=&user_id=` | `{ messages: [] }` |
 
 ---
 
@@ -137,6 +147,10 @@ The dashboard reads analyzed data straight from Supabase using the signed-in
 user's session (RLS enforced). Requires envs:
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET` (default `User Data`).
+
+The dashboard/profile/chat frontend must not persist profile, report, memory,
+language, or session identity in browser local storage. Signed-in user data is
+read from Supabase and scoped by `auth.uid()::text = user_id`.
 
 IMPORTANT: queries must carry the user's JWT for RLS. The old frontend built a
 per-request client with `Authorization: Bearer <access_token>` (see
@@ -148,6 +162,7 @@ per-request client with `Authorization: Bearer <access_token>` (see
 | Table | Read pattern | Notes |
 | --- | --- | --- |
 | `reports` | `select * eq user_id order created_at desc` | `local_report_id`, `report_json`, `biomarker_count`, `report_status` |
+| `user_profiles` | `select * eq user_id maybeSingle` / `upsert on user_id` | settings page source of truth; hydrated from Google metadata on login |
 | `biomarker_history` | `select * eq user_id order report_date asc` | numeric biomarker rows |
 | `anomaly_findings` | `select * eq user_id order detected_at desc` | includes `finding_type='image_finding'` for scans |
 | `share_links` | `select * eq user_id order created_at desc` | |
@@ -307,6 +322,7 @@ Functions in `frontend/lib/vaidy-api.ts`:
 - `streamVaidyChat(...)` → POST `/chat/stream` (SSE)
 
 Direct Supabase (`frontend/lib/supabase-data.ts`):
+- `ensureUserProfile / fetchUserProfile / upsertUserProfile`
 - `fetchUserReports / fetchUserBiomarkers / fetchUserAnomalies / fetchUserShareLinks`
 - `listUserFiles / getReportFileUrl / deleteReport`
 - Auth/session via `frontend/lib/supabase.ts` + `frontend/lib/auth-context.tsx`.

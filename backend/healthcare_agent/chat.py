@@ -48,6 +48,7 @@ def chat_response(
     on_chunk=None,
     session_id: str | None = None,
     language_preference: str = "auto",
+    user_id: str = "",
 ) -> ChatResult:
     active_settings = settings or load_agent_settings()
     active_session_id = ensure_session(session_id, active_settings) if active_settings.memory_enabled else ""
@@ -71,7 +72,7 @@ def chat_response(
     memory_payload: dict[str, object] = {"context": "", "hits": [], "history_messages": []}
     conversation_history = history or []
     if active_settings.memory_enabled:
-        memory_payload = memory_context(message, active_session_id, active_settings)
+        memory_payload = memory_context(message, active_session_id, active_settings, user_id=user_id)
         saved_history = memory_payload.get("history_messages")
         if isinstance(saved_history, list) and saved_history:
             conversation_history = saved_history
@@ -87,14 +88,14 @@ def chat_response(
         health_context_text = health_context_for_query(
             message,
             retrieval_intent if retrieval_intent != "fresh_upload" else "general_health",
-            active_settings.default_user_id,
+            user_id or active_settings.default_user_id,
             active_settings,
         )
         # Always retrieve report evidence so actual findings (image findings,
         # biomarkers, document text) are available to answer from. The health
         # timeline context alone never carries the report findings, so relying
         # on it would make the agent claim it has no findings when it does.
-        evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings)
+        evidence = search_reports(message, limit=active_settings.chat_evidence_limit, settings=active_settings, user_id=user_id)
         # When the user points at a specific stored report, attach that report's
         # own evidence directly so a reference like "report #7" is answered from
         # report 7 rather than only whatever semantic search surfaced.
@@ -125,10 +126,10 @@ def chat_response(
         if fallback_text:
             text = fallback_text
     if active_session_id and model == "unavailable":
-        save_chat_message(active_session_id, "user", message, active_settings)
-        save_chat_message(active_session_id, "assistant", text, active_settings)
+        save_chat_message(active_session_id, "user", message, active_settings, user_id=user_id)
+        save_chat_message(active_session_id, "assistant", text, active_settings, user_id=user_id)
     elif active_session_id:
-        remember_turn(active_session_id, message, text, active_settings)
+        remember_turn(active_session_id, message, text, active_settings, user_id=user_id)
     return ChatResult(
         text=text,
         used_report_context=bool(evidence or health_context_text or fresh_report),

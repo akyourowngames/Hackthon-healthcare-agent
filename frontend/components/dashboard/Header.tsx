@@ -21,7 +21,7 @@ export function Header({ title, breadcrumb = ["Home", "Dashboard"] }: HeaderProp
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#0a0a0f]/80 px-4 py-4 backdrop-blur-xl sm:px-6">
+    <header className="sticky top-0 z-30 border-b border-border bg-[#0a0a0f]/80 px-4 py-4 backdrop-blur-xl sm:px-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <nav className="mb-1 flex items-center gap-1 text-xs text-slate-500">
@@ -32,7 +32,7 @@ export function Header({ title, breadcrumb = ["Home", "Dashboard"] }: HeaderProp
               </span>
             ))}
           </nav>
-          <h1 className="font-heading text-xl font-bold text-white sm:text-2xl">{title}</h1>
+          <h1 className="font-heading text-xl font-bold text-primary sm:text-2xl">{title}</h1>
         </div>
 
         <div className="flex items-center gap-3">
@@ -41,24 +41,24 @@ export function Header({ title, breadcrumb = ["Home", "Dashboard"] }: HeaderProp
             <input
               type="search"
               placeholder="Search reports, biomarkers..."
-              className="w-full min-h-[44px] rounded-lg border border-white/[0.08] bg-[#0d0d12] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-teal-500/40 focus:ring-2 focus:ring-teal-500/20"
+              className="w-full min-h-[44px] rounded-lg border border-border bg-surface py-2 pl-10 pr-4 text-sm text-primary outline-none placeholder:text-muted focus:border-accent-primary focus:shadow-accent-glow"
             />
           </div>
 
           <button
             type="button"
-            className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-white/[0.08] bg-[#111] text-slate-400 hover:text-white"
+            className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface text-secondary hover:text-primary"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-teal-500" />
+            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-accent-primary" />
           </button>
 
           <div className="relative">
             <button
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-500/15 text-sm font-bold text-teal-400 ring-1 ring-teal-500/25"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-glow text-sm font-bold text-accent ring-1 ring-accent-primary/25"
               aria-expanded={menuOpen}
               aria-haspopup="menu"
             >
@@ -67,13 +67,13 @@ export function Header({ title, breadcrumb = ["Home", "Dashboard"] }: HeaderProp
             {menuOpen ? (
               <div
                 role="menu"
-                className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-white/[0.08] bg-[#16161e] py-2 shadow-xl"
+                className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-[#16161e] py-2 shadow-xl"
               >
-                <p className="border-b border-white/[0.06] px-4 py-2 text-sm font-semibold text-white">{profile.name}</p>
-                <Link href="/dashboard/profile" className="block px-4 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white" role="menuitem">
+                <p className="border-b border-border px-4 py-2 text-sm font-semibold text-primary">{profile.name}</p>
+                <Link href="/dashboard/profile" className="block px-4 py-2 text-sm text-secondary hover:bg-elevated hover:text-primary" role="menuitem">
                   View Profile
                 </Link>
-                <Link href="/dashboard/profile" className="block px-4 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white" role="menuitem">
+                <Link href="/dashboard/profile" className="block px-4 py-2 text-sm text-secondary hover:bg-elevated hover:text-primary" role="menuitem">
                   Settings
                 </Link>
                 <Link href="/auth" className="block px-4 py-2 text-sm text-red-400 hover:bg-red-500/10" role="menuitem">

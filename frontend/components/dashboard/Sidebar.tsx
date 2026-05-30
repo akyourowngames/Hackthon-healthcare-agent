@@ -58,7 +58,7 @@ export function Sidebar({ collapsed, onToggle, mobile }: SidebarProps) {
 
   return (
     <aside
-      className={`${hidden} ${width} fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/[0.08] bg-[#0a0a0f]/95 px-3 py-5 backdrop-blur-xl transition-[width] duration-300`}
+      className={`${hidden} ${width} fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-surface px-3 py-5 backdrop-blur-xl transition-[width] duration-300`}
     >
       <div className={`flex items-center ${collapsed && !mobile ? "justify-center" : "justify-between px-2"}`}>
         {collapsed && !mobile ? (
@@ -70,7 +70,7 @@ export function Sidebar({ collapsed, onToggle, mobile }: SidebarProps) {
           <button
             type="button"
             onClick={onToggle}
-            className="hidden rounded-lg p-2 text-slate-500 hover:bg-white/5 hover:text-white lg:flex"
+            className="hidden rounded-lg p-2 text-secondary hover:bg-elevated hover:text-primary lg:flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
@@ -88,8 +88,8 @@ export function Sidebar({ collapsed, onToggle, mobile }: SidebarProps) {
               title={collapsed ? label : undefined}
               className={`dashboard-nav-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                 active
-                  ? "border-l-[3px] border-l-teal-500 bg-white/[0.04] text-teal-400"
-                  : "border-l-[3px] border-l-transparent text-slate-500 hover:bg-white/[0.03] hover:text-slate-200"
+                  ? "border-l-[3px] border-l-accent-primary bg-elevated text-accent"
+                  : "border-l-[3px] border-l-transparent text-secondary hover:bg-elevated hover:text-primary"
               } ${collapsed && !mobile ? "justify-center px-2" : ""}`}
             >
               <Icon className="h-5 w-5 shrink-0" />
@@ -97,7 +97,7 @@ export function Sidebar({ collapsed, onToggle, mobile }: SidebarProps) {
                 <>
                   <span className="flex-1">{label}</span>
                   {badge ? (
-                    <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-teal-400">
+                    <span className="rounded-full bg-accent-glow px-2 py-0.5 text-[10px] font-bold uppercase text-accent">
                       {badge}
                     </span>
                   ) : null}
@@ -111,11 +111,11 @@ export function Sidebar({ collapsed, onToggle, mobile }: SidebarProps) {
       <div className={`mt-auto border-t border-white/[0.08] pt-4 ${collapsed && !mobile ? "px-0" : "px-2"}`}>
         {(!collapsed || mobile) && (
           <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-500/15 text-sm font-bold text-teal-400">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-glow text-sm font-bold text-accent">
               {initials}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{profile.name}</p>
+              <p className="truncate text-sm font-semibold text-primary">{profile.name}</p>
               <p className="truncate text-xs text-slate-500">{profile.email}</p>
             </div>
           </div>
@@ -143,7 +143,7 @@ export function MobileBottomNav() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-white/[0.08] bg-[#0a0a0f]/95 backdrop-blur-xl lg:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface backdrop-blur-xl lg:hidden">
       {items.map(({ href, icon: Icon, label }) => {
         const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
         return (
@@ -151,7 +151,7 @@ export function MobileBottomNav() {
             key={href}
             href={href}
             className={`flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium ${
-              active ? "text-teal-400" : "text-slate-500"
+              active ? "text-accent" : "text-secondary"
             }`}
           >
             <Icon className="h-5 w-5" />

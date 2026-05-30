@@ -11,7 +11,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const padLeft = collapsed ? "lg:pl-16" : "lg:pl-60";
 
   return (
-    <div className="app-bg min-h-screen bg-[#0a0a0f] text-slate-100">
+    <div className="app-bg min-h-screen bg-primary text-primary">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div className={`min-h-screen pb-20 transition-[padding] duration-300 ${padLeft} lg:pb-0`}>
         {children}
