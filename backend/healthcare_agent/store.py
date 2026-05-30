@@ -50,10 +50,15 @@ def save_report(
     output_path: str | Path,
     settings: AgentSettings | None = None,
     user_id: str | None = None,
+    source_hash: str = "",
 ) -> int:
     active_settings = settings or load_agent_settings()
     safe_user_id = _safe_user_id(user_id, active_settings)
     initialize_database(active_settings)
+    if source_hash:
+        hash_dup = find_duplicate_by_hash(source_hash, safe_user_id, active_settings)
+        if hash_dup is not None:
+            return hash_dup
     duplicate_id = find_duplicate_report_id(payload, active_settings, safe_user_id)
     if duplicate_id is not None:
         return duplicate_id
@@ -69,10 +74,10 @@ def save_report(
             """
             INSERT INTO reports (
                 user_id, source_path, output_path, stored_json_path, patient_name,
-                report_date, lab_name, report_status, biomarker_count,
-                report_json, created_at
+                report_date, lab_name, report_status, biomarker_count, finding_count,
+                source_hash, report_json, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 safe_user_id,
@@ -84,6 +89,8 @@ def save_report(
                 str(payload.get("lab_name") or ""),
                 str(payload.get("report_status") or ""),
                 len(payload.get("biomarkers") or {}),
+                len(payload.get("findings") or []),
+                source_hash,
                 json.dumps(payload, ensure_ascii=False),
                 created_at,
             ),
@@ -198,6 +205,7 @@ def save_document(
     output_path: str | Path | None = None,
     settings: AgentSettings | None = None,
     user_id: str | None = None,
+    source_hash: str = "",
 ) -> int:
     resolved = Path(document_path).expanduser().resolve()
     text = resolved.read_text(encoding="utf-8", errors="replace")
@@ -213,7 +221,7 @@ def save_document(
     target = Path(output_path).expanduser().resolve() if output_path else resolved
     if output_path:
         write_json(target, payload)
-    return save_report(payload, resolved, target, settings, user_id=user_id)
+    return save_report(payload, resolved, target, settings, user_id=user_id, source_hash=source_hash)
 
 
 def list_reports(settings: AgentSettings | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
@@ -226,7 +234,7 @@ def list_reports(settings: AgentSettings | None = None, user_id: str | None = No
         rows = connection.execute(
             """
             SELECT id, user_id, patient_name, report_date, lab_name, report_status,
-                   biomarker_count, source_path, stored_json_path, created_at
+                   biomarker_count, finding_count, source_path, stored_json_path, created_at
             FROM reports
             WHERE user_id = ?
             ORDER BY id DESC
@@ -829,91 +837,15 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             lab_name TEXT NOT NULL,
             report_status TEXT NOT NULL,
             biomarker_count INTEGER NOT NULL,
+            finding_count INTEGER NOT NULL DEFAULT 0,
             report_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
         """
     )
     _ensure_column(connection, "reports", "user_id", "TEXT NOT NULL DEFAULT ''")
-    connection.execute(
-        "UPDATE reports SET user_id = ? WHERE user_id = ''",
-        ("local-user",),
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS report_chunks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            report_id INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            vector_json TEXT NOT NULL,
-            embedding_provider TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(report_id) REFERENCES reports(id)
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS biomarker_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            report_id INTEGER NOT NULL,
-            biomarker_name TEXT NOT NULL,
-            value REAL,
-            unit TEXT NOT NULL,
-            flag TEXT NOT NULL,
-            ref_range TEXT NOT NULL,
-            report_date TEXT NOT NULL,
-            lab_name TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(report_id) REFERENCES reports(id)
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS anomaly_findings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            biomarker TEXT NOT NULL,
-            finding_type TEXT NOT NULL,
-            severity TEXT NOT NULL,
-            description TEXT NOT NULL,
-            data_points TEXT NOT NULL,
-            metrics_json TEXT NOT NULL,
-            detected_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS share_links (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            report_ids_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            view_count INTEGER NOT NULL DEFAULT 0
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notification_outbox (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            report_id INTEGER NOT NULL,
-            subject TEXT NOT NULL,
-            body TEXT NOT NULL,
-            status TEXT NOT NULL,
-            dedupe_key TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_biomarker_history_user ON biomarker_history(user_id, biomarker_name)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_anomaly_findings_user ON anomaly_findings(user_id)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_notification_outbox_user ON notification_outbox(user_id)")
+    _ensure_column(connection, "reports", "finding_count", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(connection, "reports", "source_hash", "TEXT NOT NULL DEFAULT ''")
     connection.commit()
 
 
@@ -1188,6 +1120,29 @@ def _report_fingerprint(payload: dict[str, Any]) -> str:
 
 def _safe_user_id(user_id: str | None, settings: AgentSettings) -> str:
     return str(user_id or settings.default_user_id).strip() or settings.default_user_id
+
+
+def compute_file_hash(file_path: str | Path) -> str:
+    import hashlib
+    path = Path(file_path).expanduser().resolve()
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def find_duplicate_by_hash(source_hash: str, user_id: str, settings: AgentSettings | None = None) -> int | None:
+    if not source_hash:
+        return None
+    active_settings = settings or load_agent_settings()
+    initialize_database(active_settings)
+    with _connect(active_settings) as connection:
+        row = connection.execute(
+            "SELECT id FROM reports WHERE source_hash = ? AND user_id = ? LIMIT 1",
+            (source_hash, user_id),
+        ).fetchone()
+    return int(row["id"]) if row else None
 
 
 def _preferred_duplicate(group: list[dict[str, Any]]) -> dict[str, Any]:

@@ -6,6 +6,7 @@ export interface Report {
     report_date: string;
     lab_name: string;
     biomarker_count: number;
+    finding_count: number;
     kind: string;
 }
 

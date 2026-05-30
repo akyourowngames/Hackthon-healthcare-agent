@@ -17,6 +17,7 @@ create table if not exists public.reports (
   lab_name text not null default '',
   report_status text not null default '',
   biomarker_count integer not null default 0,
+  finding_count integer not null default 0,
   source_path text not null default '',
   report_json jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()

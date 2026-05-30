@@ -202,7 +202,11 @@ export default function ReportsPage() {
                                         </div>
                                         <div className="text-right shrink-0 flex items-center gap-3">
                                             <div>
-                                                <div className="text-xs font-mono text-zinc-400">{report.biomarker_count} markers</div>
+                                                <div className="text-xs font-mono text-zinc-400">
+                                                    {report.finding_count > 0
+                                                        ? `${report.finding_count} finding${report.finding_count !== 1 ? 's' : ''}`
+                                                        : `${report.biomarker_count} marker${report.biomarker_count !== 1 ? 's' : ''}`}
+                                                </div>
                                                 <div className="text-[10px] text-zinc-600 mt-0.5">{report.kind || 'report'}</div>
                                             </div>
                                             <ChevronRight size={14} className={`transition-colors ${selectedReport?.id === report.id ? 'text-blue-400' : 'text-zinc-700 group-hover:text-zinc-500'}`} />
@@ -267,14 +271,28 @@ export default function ReportsPage() {
                                         <div>
                                             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-3">Findings</div>
                                             <div className="space-y-2">
-                                                {findings.map((f: any, i: number) => (
-                                                    <div key={i} className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl">
-                                                        <div className="flex items-center gap-2">
-                                                            <AlertTriangle size={12} className="text-amber-400 shrink-0" />
-                                                            <p className="text-xs text-zinc-300">{f.message || f.description || JSON.stringify(f)}</p>
+                                                {findings.map((f: any, i: number) => {
+                                                    const severity = (f.severity || '').toLowerCase();
+                                                    const severityColor = severity === 'urgent' ? 'text-red-400 bg-red-500/10 border-red-500/20'
+                                                        : severity === 'concern' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                                                        : severity === 'normal' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                                        : 'text-zinc-400 bg-zinc-800/50 border-zinc-700/50';
+                                                    const title = f.title || f.name || f.label || '';
+                                                    const detail = f.detail || f.description || f.message || '';
+                                                    return (
+                                                        <div key={i} className={`p-3 border rounded-xl ${severityColor}`}>
+                                                            <div className="flex items-start gap-2">
+                                                                {severity === 'urgent' || severity === 'concern' ? (
+                                                                    <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                                                                ) : null}
+                                                                <div>
+                                                                    {title && <p className="text-xs font-bold text-zinc-200">{title}</p>}
+                                                                    {detail && <p className="text-[11px] text-zinc-400 mt-1">{detail}</p>}
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}

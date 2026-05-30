@@ -32,17 +32,20 @@ Schema:
 
 Rules:
 - If the image is a lab report or has a numeric results table, fill biomarkers
-  using values that come from the report itself. Use null when a field is
-  missing.
+  using values that come directly from the report itself. Use null when a field
+  is missing.
 - If the image is a radiology study or any non-tabular medical image, leave
   biomarkers as {} and describe what is visible in findings. Each finding has a
   short title and a detail string in plain language.
 - modality is the imaging type when known (chest x-ray, ct abdomen, mri brain,
   ultrasound, ecg, prescription, lab report, document). Use null when unsure.
 - body_region is the anatomy in the image when known (chest, abdomen, brain,
-  pelvis, knee, full body, hand). Use null when unsure.
+  pelvis, knee, full body, hand, head, teeth, jaw). Use null when unsure.
 - summary is one sentence in plain English describing the most important
   observation.
+- Each finding must be unique. Do not repeat the same observation with different
+  wording. If you notice the same thing from multiple angles, combine it into
+  one finding with a comprehensive detail string.
 - Never invent patient identifiers. Never invent biomarker values. Never invent
   findings. If the image is unreadable, return findings: [{"title": "image
   unreadable", "detail": "...", "severity": "watch"}] with empty biomarkers.
@@ -51,3 +54,6 @@ Rules:
   pneumothorax, fracture displacement, large mass, or critical lab values.
 - Do not write a diagnosis. Describe what is visible and keep clinical
   interpretation tentative.
+- For dental/oral images: describe each distinct finding (missing teeth,
+  misalignment, decay, bone loss, etc.) as separate findings. Be specific
+  about location (upper jaw, lower jaw, left, right, anterior, posterior).

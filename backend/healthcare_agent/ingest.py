@@ -11,7 +11,9 @@ from extractor.utils import safe_stem, write_json
 
 from .config import AgentSettings, load_agent_settings
 from .store import (
+    compute_file_hash,
     copy_source_to_storage,
+    find_duplicate_by_hash,
     save_document,
     save_report,
     source_exists,
@@ -87,13 +89,21 @@ def process_single_file(
 
 
 def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id: str | None = None) -> dict[str, Any]:
+    from .config import AgentSettings
+    from .store import find_duplicate_by_hash
+
     extension = path.suffix.lower()
+    safe_user_id = str(user_id or settings.default_user_id).strip() or settings.default_user_id
+    file_hash = compute_file_hash(path)
+    hash_dup = find_duplicate_by_hash(file_hash, safe_user_id, settings)
+    if hash_dup is not None:
+        return {"path": str(path), "kind": "skipped", "reason": "duplicate_file", "report_id": hash_dup}
     output_dir = settings.default_output_dir / safe_stem(path)
     if extension == ".pdf":
         result = run_pipeline(path, output_dir=output_dir, local_only=local_only)
         payload = json.loads(Path(result["output_path"]).read_text(encoding="utf-8"))
         copy_source_to_storage(path, settings)
-        report_id = save_report(payload, path, result["output_path"], settings, user_id=user_id)
+        report_id = save_report(payload, path, result["output_path"], settings, user_id=user_id, source_hash=file_hash)
         return {
             "path": str(path),
             "kind": "pdf",
@@ -121,7 +131,7 @@ def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         copy_source_to_storage(path, settings)
-        report_id = save_report(payload, path, result["output_path"], settings, user_id=user_id)
+        report_id = save_report(payload, path, result["output_path"], settings, user_id=user_id, source_hash=file_hash)
         return {
             "path": str(path),
             "kind": "image",
@@ -140,7 +150,7 @@ def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id
         payload = json.loads(path.read_text(encoding="utf-8"))
         output_path = output_dir / f"{safe_stem(path)}.json"
         write_json(output_path, payload)
-        report_id = save_report(payload, path, output_path, settings, user_id=user_id)
+        report_id = save_report(payload, path, output_path, settings, user_id=user_id, source_hash=file_hash)
         return {
             "path": str(path),
             "kind": "json",
@@ -156,7 +166,7 @@ def _process_file(path: Path, settings: AgentSettings, local_only: bool, user_id
         }
     copy_source_to_storage(path, settings)
     output_path = output_dir / f"{safe_stem(path)}.json"
-    report_id = save_document(path, output_path, settings, user_id=user_id)
+    report_id = save_document(path, output_path, settings, user_id=user_id, source_hash=file_hash)
     return {
         "path": str(path),
         "kind": extension.lstrip(".") or "text",

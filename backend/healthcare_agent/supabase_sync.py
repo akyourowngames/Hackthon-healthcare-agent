@@ -172,6 +172,7 @@ def sync_report_bundle(report_id: int, settings: AgentSettings | None = None) ->
                     "lab_name": record.get("lab_name") or "",
                     "report_status": record.get("report_status") or "",
                     "biomarker_count": int(record.get("biomarker_count") or 0),
+                    "finding_count": int(record.get("finding_count") or 0),
                     "source_path": record.get("source_path") or "",
                     "report_json": report_payload,
                     "created_at": record.get("created_at") or datetime.now().isoformat(timespec="seconds"),

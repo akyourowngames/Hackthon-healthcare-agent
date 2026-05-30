@@ -284,7 +284,11 @@ export default function DashboardPage() {
                                             </div>
                                         </div>
                                         <div className="text-right shrink-0">
-                                            <div className="text-xs font-mono text-zinc-400">{report.biomarker_count} markers</div>
+                                            <div className="text-xs font-mono text-zinc-400">
+                                                {report.finding_count > 0
+                                                    ? `${report.finding_count} finding${report.finding_count !== 1 ? 's' : ''}`
+                                                    : `${report.biomarker_count} marker${report.biomarker_count !== 1 ? 's' : ''}`}
+                                            </div>
                                             <div className="text-[10px] text-zinc-600 mt-0.5">{report.kind || 'report'}</div>
                                         </div>
                                     </div>
