@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import uuid
@@ -44,6 +45,53 @@ class SearchHit:
 
 def initialize_database(settings: AgentSettings | None = None) -> None:
     pass
+
+
+def compute_file_hash(file_path: str | Path) -> str:
+    resolved = Path(file_path).expanduser().resolve()
+    h = hashlib.sha256()
+    with open(resolved, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def find_duplicate_by_hash(file_hash: str, user_id: str, settings: AgentSettings | None = None) -> int | None:
+    active_settings = settings or load_agent_settings()
+    safe_hash = str(file_hash or "").strip()
+    if not safe_hash:
+        return None
+    rows = supa_select(
+        active_settings, "reports",
+        {"source_hash": safe_hash, "user_id": user_id},
+        select="id",
+        limit=1,
+    )
+    return int(rows[0]["id"]) if rows else None
+
+
+def save_document(
+    document_path: str | Path,
+    output_path: str | Path | None = None,
+    settings: AgentSettings | None = None,
+    user_id: str | None = None,
+    source_hash: str = "",
+) -> int:
+    resolved = Path(document_path).expanduser().resolve()
+    text = resolved.read_text(encoding="utf-8", errors="replace")
+    payload = {
+        "patient_name": resolved.stem,
+        "report_date": "",
+        "lab_name": "",
+        "report_status": "DOCUMENT",
+        "document_type": resolved.suffix.lower().lstrip(".") or "text",
+        "document_text": text,
+        "biomarkers": {},
+    }
+    target = Path(output_path).expanduser().resolve() if output_path else resolved
+    if output_path:
+        write_json(target, payload)
+    return save_report(payload, resolved, target, settings, user_id=user_id, source_hash=source_hash)
 
 
 def save_report(
@@ -164,6 +212,12 @@ def deduplicate_reports(settings: AgentSettings | None = None) -> dict[str, Any]
     if removed:
         _delete_supabase_reports(removed, active_settings)
     return {"removed": removed, "kept": kept, "removed_count": len(removed)}
+
+
+def existing_report_ids(settings: AgentSettings | None = None) -> set[int]:
+    active_settings = settings or load_agent_settings()
+    rows = supa_select(active_settings, "reports", select="id", order="id.asc")
+    return {int(row["id"]) for row in rows if row.get("id") is not None}
 
 
 def list_reports(settings: AgentSettings | None = None, user_id: str | None = None) -> list[dict[str, Any]]:
