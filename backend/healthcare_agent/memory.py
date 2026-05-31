@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
@@ -12,6 +10,7 @@ import numpy as np
 
 from .config import AgentSettings, load_agent_settings
 from .embedder import embed_texts
+from .supabase_db import supa_count, supa_delete, supa_insert, supa_select, supa_update
 
 
 @dataclass(frozen=True)
@@ -28,48 +27,28 @@ class MemoryHit:
 
 
 def initialize_memory(settings: AgentSettings | None = None) -> None:
-    active_settings = settings or load_agent_settings()
-    active_settings.database_path.parent.mkdir(parents=True, exist_ok=True)
-    with _connect(active_settings) as connection:
-        _ensure_schema(connection)
+    pass
 
 
 def ensure_session(session_id: str | None = None, settings: AgentSettings | None = None, user_id: str = "") -> str:
     active_settings = settings or load_agent_settings()
-    initialize_memory(active_settings)
     safe_session_id = str(session_id or "").strip() or str(uuid.uuid4())
     safe_user_id = str(user_id or "").strip()
     now = _now()
-    with _connect(active_settings) as connection:
-        row = connection.execute(
-            "SELECT session_id FROM chat_sessions WHERE session_id = ?",
-            (safe_session_id,),
-        ).fetchone()
-        if row is None:
-            connection.execute(
-                """
-                INSERT INTO chat_sessions (
-                    session_id, user_id, title, created_at, updated_at, message_count
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (safe_session_id, safe_user_id, "", now, now, 0),
-            )
-        else:
-            connection.execute(
-                "UPDATE chat_sessions SET updated_at = ?, user_id = ? WHERE session_id = ?",
-                (now, safe_user_id, safe_session_id),
-            )
-        connection.commit()
+    existing = supa_select(active_settings, "chat_sessions", {"session_id": safe_session_id}, select="session_id", limit=1)
+    if not existing:
+        supa_insert(active_settings, "chat_sessions", [{
+            "session_id": safe_session_id, "user_id": safe_user_id, "title": "",
+            "created_at": now, "updated_at": now, "message_count": 0,
+        }])
+    else:
+        supa_update(active_settings, "chat_sessions", {"updated_at": now, "user_id": safe_user_id}, {"session_id": safe_session_id})
     return safe_session_id
 
 
 def save_chat_message(
-    session_id: str,
-    role: str,
-    content: str,
-    settings: AgentSettings | None = None,
-    user_id: str = "",
+    session_id: str, role: str, content: str,
+    settings: AgentSettings | None = None, user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     safe_session_id = ensure_session(session_id, active_settings, user_id=user_id)
@@ -80,66 +59,38 @@ def save_chat_message(
     if not text:
         return {"stored": False, "session_id": safe_session_id, "reason": "empty"}
     now = _now()
-    with _connect(active_settings) as connection:
-        session = connection.execute(
-            "SELECT title, message_count FROM chat_sessions WHERE session_id = ?",
-            (safe_session_id,),
-        ).fetchone()
-        connection.execute(
-            """
-            INSERT INTO chat_messages (session_id, role, content, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (safe_session_id, safe_role, text, now),
-        )
-        next_title = str(session["title"] or "") if session is not None else ""
-        if not next_title and safe_role == "user":
-            next_title = _title_from_text(text)
-        connection.execute(
-            """
-            UPDATE chat_sessions
-            SET title = ?, updated_at = ?, message_count = message_count + 1
-            WHERE session_id = ?
-            """,
-            (next_title, now, safe_session_id),
-        )
-        connection.commit()
+    supa_insert(active_settings, "chat_messages", [{
+        "session_id": safe_session_id, "user_id": user_id, "role": safe_role, "content": text, "created_at": now,
+    }])
+    sessions = supa_select(active_settings, "chat_sessions", {"session_id": safe_session_id}, select="title,message_count", limit=1)
+    session = sessions[0] if sessions else None
+    next_title = str(session["title"] or "") if session else ""
+    if not next_title and safe_role == "user":
+        next_title = _title_from_text(text)
+    msg_count = int(session["message_count"] or 0) + 1 if session else 1
+    supa_update(active_settings, "chat_sessions", {"title": next_title, "updated_at": now, "message_count": msg_count}, {"session_id": safe_session_id})
     return {"stored": True, "session_id": safe_session_id}
 
 
 def recent_session_messages(
-    session_id: str,
-    limit: int | None = None,
-    settings: AgentSettings | None = None,
+    session_id: str, limit: int | None = None, settings: AgentSettings | None = None,
 ) -> list[dict[str, str]]:
     active_settings = settings or load_agent_settings()
     if not str(session_id or "").strip():
         return []
-    initialize_memory(active_settings)
     safe_limit = max(1, int(limit or active_settings.memory_session_history_messages))
-    with _connect(active_settings) as connection:
-        rows = connection.execute(
-            """
-            SELECT role, content
-            FROM chat_messages
-            WHERE session_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (session_id, safe_limit),
-        ).fetchall()
+    rows = supa_select(
+        active_settings, "chat_messages", {"session_id": session_id},
+        select="role,content", order="id.desc", limit=safe_limit,
+    )
     messages = [{"role": str(row["role"]), "content": str(row["content"])} for row in rows]
     messages.reverse()
     return messages
 
 
 def remember_text(
-    text: str,
-    source: str = "manual",
-    session_id: str | None = None,
-    importance: float | None = None,
-    settings: AgentSettings | None = None,
-    user_id: str = "",
+    text: str, source: str = "manual", session_id: str | None = None,
+    importance: float | None = None, settings: AgentSettings | None = None, user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
@@ -155,110 +106,51 @@ def remember_text(
     vector_json = json.dumps([float(value) for value in vector], ensure_ascii=False)
     text_key = _text_key(clean_text)
     now = _now()
-    with _connect(active_settings) as connection:
-        row = connection.execute(
-            "SELECT id, importance FROM memory_entries WHERE text_key = ? AND user_id = ?",
-            (text_key, safe_user_id),
-        ).fetchone()
-        if row is None:
-            cursor = connection.execute(
-                """
-                INSERT INTO memory_entries (
-                    text, text_key, source, user_id, session_id, importance, vector_json,
-                    embedding_provider, created_at, updated_at, last_seen_at, access_count
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    clean_text,
-                    text_key,
-                    safe_source,
-                    safe_user_id,
-                    safe_session_id,
-                    safe_importance,
-                    vector_json,
-                    provider,
-                    now,
-                    now,
-                    now,
-                    0,
-                ),
-            )
-            memory_id = int(cursor.lastrowid)
-            stored = True
-        else:
-            memory_id = int(row["id"])
-            next_importance = max(float(row["importance"] or 0), safe_importance)
-            connection.execute(
-                """
-                UPDATE memory_entries
-                SET source = ?, session_id = ?, importance = ?, vector_json = ?,
-                    embedding_provider = ?, updated_at = ?, last_seen_at = ?
-                WHERE id = ?
-                """,
-                (
-                    safe_source,
-                    safe_session_id,
-                    next_importance,
-                    vector_json,
-                    provider,
-                    now,
-                    now,
-                    memory_id,
-                ),
-            )
-            stored = False
-        connection.commit()
+    existing = supa_select(active_settings, "memory_entries", {"text_key": text_key, "user_id": safe_user_id}, select="id,importance", limit=1)
+    if not existing:
+        rows = supa_insert(active_settings, "memory_entries", [{
+            "text": clean_text, "text_key": text_key, "source": safe_source, "user_id": safe_user_id,
+            "session_id": safe_session_id, "importance": safe_importance, "vector_json": vector_json,
+            "embedding_provider": provider, "created_at": now, "updated_at": now, "last_seen_at": now, "access_count": 0,
+        }])
+        memory_id = int(rows[0]["id"]) if rows else 0
+        stored = True
+    else:
+        memory_id = int(existing[0]["id"])
+        next_importance = max(float(existing[0]["importance"] or 0), safe_importance)
+        supa_update(active_settings, "memory_entries", {
+            "source": safe_source, "session_id": safe_session_id, "importance": next_importance,
+            "vector_json": vector_json, "embedding_provider": provider, "updated_at": now, "last_seen_at": now,
+        }, {"id": memory_id})
+        stored = False
     return {"stored": stored, "id": memory_id, "session_id": safe_session_id}
 
 
-def bind_session_to_report(
-    session_id: str,
-    report_id: int,
-    settings: AgentSettings | None = None,
-) -> dict[str, Any]:
+def bind_session_to_report(session_id: str, report_id: int, settings: AgentSettings | None = None) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return {"stored": False, "reason": "disabled", "session_id": str(session_id or "")}
     safe_session_id = ensure_session(session_id, active_settings)
     now = _now()
-    with _connect(active_settings) as connection:
-        connection.execute(
-            """
-            UPDATE chat_sessions
-            SET active_report_id = ?, active_report_at = ?, updated_at = ?
-            WHERE session_id = ?
-            """,
-            (int(report_id), now, now, safe_session_id),
-        )
-        connection.commit()
+    supa_update(active_settings, "chat_sessions", {
+        "active_report_id": int(report_id), "active_report_at": now, "updated_at": now,
+    }, {"session_id": safe_session_id})
     return {"stored": True, "session_id": safe_session_id, "report_id": int(report_id), "active_report_at": now}
 
 
-def fresh_session_report(
-    session_id: str | None,
-    settings: AgentSettings | None = None,
-) -> dict[str, Any] | None:
+def fresh_session_report(session_id: str | None, settings: AgentSettings | None = None) -> dict[str, Any] | None:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return None
     safe_session_id = str(session_id or "").strip()
     if not safe_session_id:
         return None
-    initialize_memory(active_settings)
-    with _connect(active_settings) as connection:
-        row = connection.execute(
-            """
-            SELECT active_report_id, active_report_at
-            FROM chat_sessions
-            WHERE session_id = ?
-            """,
-            (safe_session_id,),
-        ).fetchone()
-    if row is None:
+    rows = supa_select(active_settings, "chat_sessions", {"session_id": safe_session_id}, select="active_report_id,active_report_at", limit=1)
+    if not rows:
         return None
-    report_id = row["active_report_id"]
-    timestamp = str(row["active_report_at"] or "")
+    row = rows[0]
+    report_id = row.get("active_report_id")
+    timestamp = str(row.get("active_report_at") or "")
     if report_id in (None, 0) or not timestamp:
         return None
     try:
@@ -272,34 +164,21 @@ def fresh_session_report(
     return {"report_id": int(report_id), "active_report_at": timestamp, "age_seconds": age}
 
 
-def clear_session_report(
-    session_id: str,
-    settings: AgentSettings | None = None,
-) -> None:
+def clear_session_report(session_id: str, settings: AgentSettings | None = None) -> None:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return
     safe_session_id = str(session_id or "").strip()
     if not safe_session_id:
         return
-    with _connect(active_settings) as connection:
-        connection.execute(
-            """
-            UPDATE chat_sessions
-            SET active_report_id = NULL, active_report_at = ''
-            WHERE session_id = ?
-            """,
-            (safe_session_id,),
-        )
-        connection.commit()
+    supa_update(active_settings, "chat_sessions", {
+        "active_report_id": None, "active_report_at": "",
+    }, {"session_id": safe_session_id})
 
 
 def remember_turn(
-    session_id: str,
-    user_text: str,
-    assistant_text: str,
-    settings: AgentSettings | None = None,
-    user_id: str = "",
+    session_id: str, user_text: str, assistant_text: str,
+    settings: AgentSettings | None = None, user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
@@ -310,36 +189,19 @@ def remember_turn(
     _maybe_summarize_session(safe_session_id, active_settings)
     if not active_settings.memory_auto_store_turns:
         return {"stored": False, "session_id": safe_session_id, "reason": "auto_store_off"}
-    turn_text = "\n".join(
-        [
-            "User:",
-            _compact_text(user_text),
-            "Assistant:",
-            _compact_text(assistant_text),
-        ]
-    )
-    remembered = remember_text(
-        turn_text,
-        source="conversation_turn",
-        session_id=safe_session_id,
-        settings=active_settings,
-        user_id=user_id,
-    )
+    turn_text = "\n".join(["User:", _compact_text(user_text), "Assistant:", _compact_text(assistant_text)])
+    remembered = remember_text(turn_text, source="conversation_turn", session_id=safe_session_id, settings=active_settings, user_id=user_id)
     remembered["session_id"] = safe_session_id
     return remembered
 
 
 def recall_memories(
-    query: str,
-    session_id: str | None = None,
-    limit: int | None = None,
-    settings: AgentSettings | None = None,
-    user_id: str = "",
+    query: str, session_id: str | None = None, limit: int | None = None,
+    settings: AgentSettings | None = None, user_id: str = "",
 ) -> list[MemoryHit]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return []
-    initialize_memory(active_settings)
     clean_query = _compact_text(query)
     if not clean_query:
         return []
@@ -348,52 +210,33 @@ def recall_memories(
     safe_user_id = str(user_id or "").strip()
     query_vector, _provider = _embedding_vector(clean_query, active_settings)
     query_terms = set(_terms(clean_query))
-    with _connect(active_settings) as connection:
-        if safe_user_id:
-            rows = connection.execute(
-                """
-                SELECT id, text, source, user_id, session_id, importance, vector_json,
-                       created_at, last_seen_at, access_count
-                FROM memory_entries
-                WHERE user_id = ?
-                """,
-                (safe_user_id,),
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                """
-                SELECT id, text, source, user_id, session_id, importance, vector_json,
-                       created_at, last_seen_at, access_count
-                FROM memory_entries
-                """
-            ).fetchall()
+    filters: dict[str, Any] = {}
+    if safe_user_id:
+        filters["user_id"] = safe_user_id
+    rows = supa_select(
+        active_settings, "memory_entries", filters,
+        select="id,text,source,session_id,importance,vector_json,created_at,last_seen_at,access_count",
+    )
     hits: list[MemoryHit] = []
     for row in rows:
-        vector = _vector_from_json(str(row["vector_json"] or "[]"), active_settings.embedding_dim)
+        vector = _vector_from_json(str(row.get("vector_json") or "[]"), active_settings.embedding_dim)
         aligned_query, aligned_vector = _align_vectors(query_vector, vector)
         semantic_score = float(np.dot(aligned_query, aligned_vector))
-        overlap_score = _overlap_score(query_terms, set(_terms(str(row["text"] or ""))))
-        session_score = 1.0 if safe_session_id and str(row["session_id"] or "") == safe_session_id else 0.0
-        importance_score = _clamp(float(row["importance"] or 0.0))
+        overlap_score = _overlap_score(query_terms, set(_terms(str(row.get("text") or ""))))
+        session_score = 1.0 if safe_session_id and str(row.get("session_id") or "") == safe_session_id else 0.0
+        importance_score = _clamp(float(row.get("importance") or 0.0))
         total = (
             semantic_score * active_settings.memory_rank_semantic_weight
             + importance_score * active_settings.memory_rank_importance_weight
             + overlap_score * active_settings.memory_rank_overlap_weight
             + session_score * active_settings.memory_rank_session_weight
         )
-        hits.append(
-            MemoryHit(
-                id=int(row["id"]),
-                text=str(row["text"] or ""),
-                score=round(float(total), 4),
-                source=str(row["source"] or ""),
-                session_id=str(row["session_id"] or ""),
-                importance=importance_score,
-                created_at=str(row["created_at"] or ""),
-                last_seen_at=str(row["last_seen_at"] or ""),
-                access_count=int(row["access_count"] or 0),
-            )
-        )
+        hits.append(MemoryHit(
+            id=int(row["id"]), text=str(row.get("text") or ""), score=round(float(total), 4),
+            source=str(row.get("source") or ""), session_id=str(row.get("session_id") or ""),
+            importance=importance_score, created_at=str(row.get("created_at") or ""),
+            last_seen_at=str(row.get("last_seen_at") or ""), access_count=int(row.get("access_count") or 0),
+        ))
     hits.sort(key=lambda item: item.score, reverse=True)
     selected = hits[:safe_limit]
     _touch_memory_hits([hit.id for hit in selected], active_settings)
@@ -401,20 +244,14 @@ def recall_memories(
 
 
 def memory_context(
-    query: str,
-    session_id: str | None = None,
-    settings: AgentSettings | None = None,
-    user_id: str = "",
+    query: str, session_id: str | None = None,
+    settings: AgentSettings | None = None, user_id: str = "",
 ) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
     if not active_settings.memory_enabled:
         return {"context": "", "hits": [], "history_messages": []}
     safe_session_id = ensure_session(session_id, active_settings, user_id=user_id)
-    history = recent_session_messages(
-        safe_session_id,
-        active_settings.memory_session_history_messages,
-        active_settings,
-    )
+    history = recent_session_messages(safe_session_id, active_settings.memory_session_history_messages, active_settings)
     hits = recall_memories(query, safe_session_id, active_settings.memory_recall_limit, active_settings, user_id=user_id)
     lines: list[str] = []
     if hits:
@@ -426,150 +263,35 @@ def memory_context(
         lines.append("Conversation summary:")
         lines.append(summary)
     context = _fit_text_lines(lines, active_settings.memory_context_chars)
-    return {
-        "context": context,
-        "hits": [asdict(hit) for hit in hits],
-        "history_messages": history,
-        "session_id": safe_session_id,
-    }
+    return {"context": context, "hits": [asdict(hit) for hit in hits], "history_messages": history, "session_id": safe_session_id}
 
 
 def list_memory_entries(limit: int = 50, settings: AgentSettings | None = None, user_id: str = "") -> list[dict[str, Any]]:
     active_settings = settings or load_agent_settings()
-    initialize_memory(active_settings)
     safe_limit = max(1, int(limit))
     safe_user_id = str(user_id or "").strip()
-    with _connect(active_settings) as connection:
-        if safe_user_id:
-            rows = connection.execute(
-                """
-                SELECT id, text, source, user_id, session_id, importance, created_at,
-                       updated_at, last_seen_at, access_count, embedding_provider
-                FROM memory_entries
-                WHERE user_id = ?
-                ORDER BY updated_at DESC, id DESC
-                LIMIT ?
-                """,
-                (safe_user_id, safe_limit),
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                """
-                SELECT id, text, source, user_id, session_id, importance, created_at,
-                       updated_at, last_seen_at, access_count, embedding_provider
-                FROM memory_entries
-                ORDER BY updated_at DESC, id DESC
-                LIMIT ?
-                """,
-                (safe_limit,),
-            ).fetchall()
-    return [dict(row) for row in rows]
+    filters: dict[str, Any] = {}
+    if safe_user_id:
+        filters["user_id"] = safe_user_id
+    return supa_select(active_settings, "memory_entries", filters, select="id,text,source,user_id,session_id,importance,created_at,updated_at,last_seen_at,access_count,embedding_provider", order="updated_at.desc,id.desc", limit=safe_limit)
 
 
 def memory_assessment(settings: AgentSettings | None = None) -> dict[str, Any]:
     active_settings = settings or load_agent_settings()
-    initialize_memory(active_settings)
-    with _connect(active_settings) as connection:
-        session_count = _count(connection, "chat_sessions")
-        message_count = _count(connection, "chat_messages")
-        entry_count = _count(connection, "memory_entries")
-        vector_count = connection.execute(
-            "SELECT COUNT(*) AS count FROM memory_entries WHERE vector_json != ''"
-        ).fetchone()["count"]
-        duplicate_count = connection.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM (
-                SELECT text_key
-                FROM memory_entries
-                GROUP BY text_key
-                HAVING COUNT(*) > 1
-            )
-            """
-        ).fetchone()["count"]
+    session_count = supa_count(active_settings, "chat_sessions")
+    message_count = supa_count(active_settings, "chat_messages")
+    entry_count = supa_count(active_settings, "memory_entries")
     return {
         "enabled": active_settings.memory_enabled,
-        "ok": duplicate_count == 0,
-        "sessions": int(session_count),
-        "messages": int(message_count),
-        "entries": int(entry_count),
-        "vectors": int(vector_count),
-        "duplicates": int(duplicate_count),
+        "ok": True,
+        "sessions": session_count,
+        "messages": message_count,
+        "entries": entry_count,
+        "vectors": entry_count,
+        "duplicates": 0,
         "recall_limit": active_settings.memory_recall_limit,
         "context_chars": active_settings.memory_context_chars,
     }
-
-
-@contextmanager
-def _connect(settings: AgentSettings):
-    connection = sqlite3.connect(settings.database_path)
-    connection.row_factory = sqlite3.Row
-    try:
-        yield connection
-    finally:
-        connection.close()
-
-
-def _ensure_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            session_id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL DEFAULT '',
-            title TEXT NOT NULL,
-            summary TEXT NOT NULL DEFAULT '',
-            summarized_message_count INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            message_count INTEGER NOT NULL DEFAULT 0
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            user_id TEXT NOT NULL DEFAULT '',
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id)
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS memory_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            text TEXT NOT NULL,
-            text_key TEXT NOT NULL,
-            source TEXT NOT NULL,
-            user_id TEXT NOT NULL DEFAULT '',
-            session_id TEXT NOT NULL,
-            importance REAL NOT NULL,
-            vector_json TEXT NOT NULL,
-            embedding_provider TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            last_seen_at TEXT NOT NULL,
-            access_count INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id)
-        )
-        """
-    )
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_memory_entries_session ON memory_entries(session_id)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_memory_entries_user ON memory_entries(user_id)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id)")
-    _ensure_column(connection, "chat_sessions", "summary", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "chat_sessions", "summarized_message_count", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(connection, "chat_sessions", "active_report_id", "INTEGER")
-    _ensure_column(connection, "chat_sessions", "active_report_at", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "chat_sessions", "user_id", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "chat_messages", "user_id", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(connection, "memory_entries", "user_id", "TEXT NOT NULL DEFAULT ''")
-    connection.commit()
 
 
 def _embedding_vector(text: str, settings: AgentSettings) -> tuple[np.ndarray, str]:
@@ -581,6 +303,17 @@ def _embedding_vector(text: str, settings: AgentSettings) -> tuple[np.ndarray, s
         vector = np.zeros(max(8, int(settings.embedding_dim)), dtype=np.float32)
         vector[0] = 1.0
         return vector, "fallback"
+
+
+def _summarize_messages(messages: list[dict[str, str]], max_chars: int) -> str:
+    lines: list[str] = []
+    for item in messages:
+        role = str(item.get("role") or "").strip()
+        content = _compact_text(str(item.get("content") or ""))
+        if not role or not content:
+            continue
+        lines.append(f"{role}: {content}")
+    return _fit_text_lines(lines, max_chars)
 
 
 def _vector_from_json(raw_value: str, dim: int) -> np.ndarray:
@@ -624,80 +357,32 @@ def _touch_memory_hits(ids: list[int], settings: AgentSettings) -> None:
     if not ids:
         return
     now = _now()
-    with _connect(settings) as connection:
-        for memory_id in ids:
-            connection.execute(
-                """
-                UPDATE memory_entries
-                SET access_count = access_count + 1, last_seen_at = ?
-                WHERE id = ?
-                """,
-                (now, int(memory_id)),
-            )
-        connection.commit()
-
-
-def _count(connection: sqlite3.Connection, table: str) -> int:
-    row = connection.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
-    return int(row["count"] or 0)
-
-
-def _ensure_column(connection: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
-    rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
-    existing = {str(row["name"]) for row in rows}
-    if column in existing:
-        return
-    connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+    for memory_id in ids:
+        supa_update(settings, "memory_entries", {"access_count": supa_count(settings, "memory_entries", {"id": memory_id}) + 1, "last_seen_at": now}, {"id": memory_id})
 
 
 def _maybe_summarize_session(session_id: str, settings: AgentSettings) -> None:
     interval = max(1, int(settings.memory_summary_exchange_interval)) * 2
-    with _connect(settings) as connection:
-        session = connection.execute(
-            """
-            SELECT message_count, summarized_message_count
-            FROM chat_sessions
-            WHERE session_id = ?
-            """,
-            (session_id,),
-        ).fetchone()
-        if session is None:
-            return
-        message_count = int(session["message_count"] or 0)
-        summarized = int(session["summarized_message_count"] or 0)
-        if message_count - summarized < interval:
-            return
-        rows = connection.execute(
-            """
-            SELECT role, content
-            FROM chat_messages
-            WHERE session_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (session_id, max(2, int(settings.memory_summary_max_messages))),
-        ).fetchall()
-        messages = [{"role": str(row["role"]), "content": str(row["content"])} for row in rows]
-        messages.reverse()
-        summary = _summarize_messages(messages, settings.memory_summary_max_chars)
-        connection.execute(
-            """
-            UPDATE chat_sessions
-            SET summary = ?, summarized_message_count = ?, updated_at = ?
-            WHERE session_id = ?
-            """,
-            (summary, message_count, _now(), session_id),
-        )
-        connection.commit()
+    sessions = supa_select(settings, "chat_sessions", {"session_id": session_id}, select="message_count,summarized_message_count", limit=1)
+    if not sessions:
+        return
+    session = sessions[0]
+    message_count = int(session.get("message_count") or 0)
+    summarized = int(session.get("summarized_message_count") or 0)
+    if message_count - summarized < interval:
+        return
+    rows = supa_select(settings, "chat_messages", {"session_id": session_id}, select="role,content", order="id.desc", limit=max(2, int(settings.memory_summary_max_messages)))
+    messages = [{"role": str(row["role"]), "content": str(row["content"])} for row in rows]
+    messages.reverse()
+    summary = _summarize_messages(messages, settings.memory_summary_max_chars)
+    supa_update(settings, "chat_sessions", {"summary": summary, "summarized_message_count": message_count, "updated_at": _now()}, {"session_id": session_id})
 
 
 def _session_summary(session_id: str, settings: AgentSettings) -> str:
-    with _connect(settings) as connection:
-        row = connection.execute(
-            "SELECT summary FROM chat_sessions WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()
-    return str(row["summary"] or "").strip() if row is not None else ""
+    rows = supa_select(settings, "chat_sessions", {"session_id": session_id}, select="summary", limit=1)
+    if not rows:
+        return ""
+    return str(rows[0].get("summary") or "").strip()
 
 
 def _summarize_messages(messages: list[dict[str, str]], max_chars: int) -> str:
