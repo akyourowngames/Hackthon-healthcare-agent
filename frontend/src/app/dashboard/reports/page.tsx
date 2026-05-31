@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     FileText, RefreshCw, Calendar, Building, Hash, Search,
-    Upload, ChevronRight, AlertTriangle, TrendingUp, X, ArrowUpRight
+    Upload, ChevronRight, AlertTriangle, TrendingUp, X, ArrowUpRight, MessageSquare
 } from 'lucide-react';
 import { vaidyApi } from '@/lib/vaidyApi';
 import { useVaidyStore } from '@/stores/vaidyStore';
@@ -66,6 +66,7 @@ export default function ReportsPage() {
     const [reportDetail, setReportDetail] = useState<any>(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState('');
 
     const fetchReports = useCallback(async () => {
         setLoading(true);
@@ -96,13 +97,15 @@ export default function ReportsPage() {
 
     const handleUpload = async (file: File) => {
         setUploading(true);
+        setUploadProgress('Uploading...');
         try {
-            await vaidyApi.upload(file);
+            await vaidyApi.uploadAndWait(file, (stage) => setUploadProgress(stage));
             await fetchReports();
         } catch (err) {
             console.error('Upload failed:', err);
         } finally {
             setUploading(false);
+            setUploadProgress('');
         }
     };
 
@@ -133,7 +136,17 @@ export default function ReportsPage() {
             </div>
 
             {/* Upload */}
-            <UploadZone onUpload={handleUpload} />
+            {uploading ? (
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-center gap-3">
+                    <RefreshCw size={16} className="text-blue-400 animate-spin" />
+                    <div>
+                        <p className="text-sm font-medium text-blue-300">Processing report...</p>
+                        <p className="text-[11px] text-blue-400/60 mt-0.5">{uploadProgress}</p>
+                    </div>
+                </div>
+            ) : (
+                <UploadZone onUpload={handleUpload} />
+            )}
 
             {/* Search */}
             <div className="relative">
@@ -241,6 +254,13 @@ export default function ReportsPage() {
                                                 <div className="text-sm font-bold text-white truncate">{reportDetail.patient_name || 'Unknown'}</div>
                                                 <div className="text-[11px] text-zinc-500 mt-0.5">{reportDetail.lab_name} · {reportDetail.report_date}</div>
                                             </div>
+                                            <a
+                                                href={`/dashboard/chat?report=${reportDetail.id}`}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-[11px] font-medium rounded-lg border border-blue-500/20 transition-colors"
+                                            >
+                                                <MessageSquare size={12} />
+                                                Chat
+                                            </a>
                                         </div>
                                         <div className="flex gap-2">
                                             <span className="text-[10px] font-mono px-2 py-1 bg-zinc-800/50 rounded-lg text-zinc-400">{reportDetail.biomarker_count || biomarkers.length} biomarkers</span>

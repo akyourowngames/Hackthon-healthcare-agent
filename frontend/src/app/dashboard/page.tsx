@@ -156,10 +156,7 @@ export default function DashboardPage() {
         setUploading(true);
         setUploadProgress('Uploading file...');
         try {
-            const result = await vaidyApi.upload(file);
-            if (result?.progress_url) {
-                setUploadProgress('Extracting biomarkers...');
-            }
+            await vaidyApi.uploadAndWait(file, (stage) => setUploadProgress(stage));
             await fetchData();
         } catch (err) {
             console.error('Upload failed:', err);

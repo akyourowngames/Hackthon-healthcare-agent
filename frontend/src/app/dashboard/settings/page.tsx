@@ -190,23 +190,21 @@ export default function SettingsPage() {
             </div>
 
             <motion.div
-                className="fixed bottom-0 left-0 right-0 lg:left-72 bg-[#0A0A0A]/80 backdrop-blur-md border-t border-zinc-900 p-6 z-40"
-                initial={{ y: 100 }}
-                animate={{ y: 0 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
+                className="mt-8 flex justify-end"
             >
-                <div className="max-w-4xl mx-auto flex items-center justify-end">
-                    <button
-                        onClick={handleSave}
-                        className="px-8 py-3 bg-white hover:bg-zinc-200 text-black rounded-full text-xs font-black uppercase tracking-widest transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] flex items-center gap-2"
-                    >
-                        {saveStatus === 'saved' ? (
-                            <><Check size={16} className="text-emerald-600" /><span>Saved</span></>
-                        ) : (
-                            <span>Save Changes</span>
-                        )}
-                    </button>
-                </div>
+                <button
+                    onClick={handleSave}
+                    className="px-8 py-3 bg-white hover:bg-zinc-200 text-black rounded-full text-xs font-black uppercase tracking-widest transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] flex items-center gap-2"
+                >
+                    {saveStatus === 'saved' ? (
+                        <><Check size={16} className="text-emerald-600" /><span>Saved</span></>
+                    ) : (
+                        <span>Save Changes</span>
+                    )}
+                </button>
             </motion.div>
         </motion.div>
     );

@@ -53,7 +53,7 @@ def compute_anomaly_findings(rows: list[dict[str, Any]], policy: InsightPolicy) 
     return findings
 
 
-def compute_health_score(history_rows: list[dict[str, Any]], findings: list[dict[str, Any]], policy: InsightPolicy) -> dict[str, Any]:
+def compute_health_score(history_rows: list[dict[str, Any]], findings: list[dict[str, Any]], policy: InsightPolicy, report_findings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     latest_by_biomarker: dict[str, dict[str, Any]] = {}
     for row in history_rows:
         name = str(row.get("biomarker_name") or "")
@@ -86,11 +86,18 @@ def compute_health_score(history_rows: list[dict[str, Any]], findings: list[dict
         elif severity == "watch":
             score -= policy.health_score_watch_penalty
 
+    for rf in report_findings or []:
+        severity = str(rf.get("severity") or "").lower()
+        if severity in {"urgent", "concern"}:
+            score -= policy.health_score_concern_penalty
+        elif severity in {"watch", "abnormal", "high", "low"}:
+            score -= policy.health_score_watch_penalty
+
     return {
         "score": max(0, min(100, int(round(score)))),
         "latest_biomarkers": len(latest_by_biomarker),
         "abnormal_latest": abnormal_count,
-        "finding_count": len(findings),
+        "finding_count": len(findings) + len(report_findings or []),
     }
 
 

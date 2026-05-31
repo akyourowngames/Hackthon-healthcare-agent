@@ -20,6 +20,10 @@ def _headers(settings: AgentSettings) -> dict[str, str]:
     }
 
 
+def _enc(value: Any) -> str:
+    return urllib.parse.quote(str(value), safe="")
+
+
 def supa_select(
     settings: AgentSettings,
     table: str,
@@ -33,11 +37,11 @@ def supa_select(
     if filters:
         for key, value in filters.items():
             if isinstance(value, list):
-                params.append(f"{key}=in.({','.join(str(v) for v in value)})")
+                params.append(f"{key}=in.({_enc(value[0]) if len(value) == 1 else ','.join(_enc(v) for v in value)})")
             elif value is None:
                 params.append(f"{key}=is.null")
             else:
-                params.append(f"{key}=eq.{value}")
+                params.append(f"{key}=eq.{_enc(value)}")
     if order:
         params.append(f"order={order}")
     if limit:
@@ -105,11 +109,11 @@ def supa_update(
     params: list[str] = []
     for key, value in filters.items():
         if isinstance(value, list):
-            params.append(f"{key}=in.({','.join(str(v) for v in value)})")
+            params.append(f"{key}=in.({_enc(value[0]) if len(value) == 1 else ','.join(_enc(v) for v in value)})")
         elif value is None:
             params.append(f"{key}=is.null")
         else:
-            params.append(f"{key}=eq.{value}")
+            params.append(f"{key}=eq.{_enc(value)}")
     query = "&".join(params)
     url = f"{settings.supabase_url.rstrip('/')}/rest/v1/{table}?{query}"
     body = json.dumps(updates, ensure_ascii=False).encode("utf-8")
@@ -130,9 +134,9 @@ def supa_delete(
     params: list[str] = []
     for key, value in filters.items():
         if isinstance(value, list):
-            params.append(f"{key}=in.({','.join(str(v) for v in value)})")
+            params.append(f"{key}=in.({_enc(value[0]) if len(value) == 1 else ','.join(_enc(v) for v in value)})")
         else:
-            params.append(f"{key}=eq.{value}")
+            params.append(f"{key}=eq.{_enc(value)}")
     query = "&".join(params)
     url = f"{settings.supabase_url.rstrip('/')}/rest/v1/{table}?{query}"
     headers = _headers(settings)
@@ -172,11 +176,11 @@ def supa_count(
     if filters:
         for key, value in filters.items():
             if isinstance(value, list):
-                params.append(f"{key}=in.({','.join(str(v) for v in value)})")
+                params.append(f"{key}=in.({_enc(value[0]) if len(value) == 1 else ','.join(_enc(v) for v in value)})")
             elif value is None:
                 params.append(f"{key}=is.null")
             else:
-                params.append(f"{key}=eq.{value}")
+                params.append(f"{key}=eq.{_enc(value)}")
     params.append("limit=0")
     query = "&".join(params)
     url = f"{settings.supabase_url.rstrip('/')}/rest/v1/{table}?{query}"

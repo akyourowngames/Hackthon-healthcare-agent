@@ -151,9 +151,18 @@ def save_report(
     ]
     if chunk_rows:
         supa_insert(active_settings, "report_chunks", chunk_rows)
-    _store_biomarker_history(active_settings, report_id, payload, safe_user_id, created_at)
-    findings = _refresh_anomaly_findings(active_settings, safe_user_id)
-    _queue_notification(active_settings, safe_user_id, report_id, findings, created_at)
+    try:
+        _store_biomarker_history(active_settings, report_id, payload, safe_user_id, created_at)
+    except Exception:
+        pass
+    try:
+        findings = _refresh_anomaly_findings(active_settings, safe_user_id)
+    except Exception:
+        findings = []
+    try:
+        _queue_notification(active_settings, safe_user_id, report_id, findings, created_at)
+    except Exception:
+        pass
     _sync_supabase_report(report_id, active_settings)
     return report_id
 
@@ -386,8 +395,18 @@ def dashboard_snapshot(user_id: str | None = None, settings: AgentSettings | Non
     active_settings = settings or load_agent_settings()
     safe_user_id = str(user_id or active_settings.default_user_id).strip() or active_settings.default_user_id
     history = list_biomarker_history(safe_user_id, settings=active_settings)
+    if not history:
+        history = _history_from_report_json(safe_user_id, active_settings)
     findings = list_anomaly_findings(safe_user_id, active_settings)
-    score = compute_health_score(history, findings, policy_from_settings(active_settings))
+    report_findings = _report_findings_from_json(safe_user_id, active_settings)
+    merged_findings = findings[:]
+    existing_descs = {str(f.get("description") or "") for f in merged_findings}
+    for rf in report_findings:
+        desc = str(rf.get("description") or "")
+        if desc and desc not in existing_descs:
+            merged_findings.append(rf)
+            existing_descs.add(desc)
+    score = compute_health_score(history, findings, policy_from_settings(active_settings), report_findings=report_findings)
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in history:
         grouped.setdefault(str(row.get("biomarker_name") or ""), []).append(row)
@@ -398,7 +417,83 @@ def dashboard_snapshot(user_id: str | None = None, settings: AgentSettings | Non
         biomarkers.append({"name": name, "latest": latest, "history": ordered, "points": len(ordered)})
     biomarkers.sort(key=lambda item: str(item.get("name") or ""))
     reports = list_reports(active_settings, user_id=safe_user_id)
-    return {"user_id": safe_user_id, "health_score": score, "anomalies": findings, "biomarkers": biomarkers, "history": history, "reports": reports}
+    return {"user_id": safe_user_id, "health_score": score, "anomalies": merged_findings, "biomarkers": biomarkers, "history": history, "reports": reports}
+
+
+def _report_findings_from_json(user_id: str, settings: AgentSettings) -> list[dict[str, Any]]:
+    rows = supa_select(
+        settings, "reports",
+        {"user_id": user_id},
+        select="id,report_json",
+        order="id.desc",
+    )
+    all_findings: list[dict[str, Any]] = []
+    for row in rows:
+        raw = row.get("report_json")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                continue
+        if not isinstance(raw, dict):
+            continue
+        findings = raw.get("findings") or []
+        if not isinstance(findings, list):
+            continue
+        for f in findings:
+            if not isinstance(f, dict):
+                continue
+            all_findings.append({
+                "biomarker": str(f.get("biomarker") or f.get("title") or ""),
+                "severity": str(f.get("severity") or "watch"),
+                "finding_type": str(f.get("finding_type") or "report_finding"),
+                "description": str(f.get("description") or f.get("detail") or f.get("message") or ""),
+            })
+    return all_findings
+
+
+def _history_from_report_json(user_id: str, settings: AgentSettings) -> list[dict[str, Any]]:
+    rows = supa_select(
+        settings, "reports",
+        {"user_id": user_id},
+        select="id,report_json,report_date,lab_name,created_at",
+        order="id.desc",
+    )
+    history: list[dict[str, Any]] = []
+    for row in rows:
+        report_id = int(row.get("id") or 0)
+        report_date = str(row.get("report_date") or "")
+        lab_name = str(row.get("lab_name") or "")
+        created_at = str(row.get("created_at") or "")
+        raw = row.get("report_json")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                continue
+        if not isinstance(raw, dict):
+            continue
+        biomarkers = raw.get("biomarkers") or {}
+        if not isinstance(biomarkers, dict):
+            continue
+        for name, value in biomarkers.items():
+            if not isinstance(value, dict):
+                continue
+            numeric_value = value.get("value")
+            history.append({
+                "user_id": user_id,
+                "report_id": report_id,
+                "biomarker_name": str(name),
+                "value": float(numeric_value) if numeric_value is not None else None,
+                "unit": str(value.get("unit") or ""),
+                "flag": str(value.get("flag") or ""),
+                "ref_range": str(value.get("ref_range") or ""),
+                "report_date": report_date,
+                "lab_name": lab_name,
+                "created_at": created_at,
+            })
+    history.sort(key=lambda item: (int(item.get("report_id") or 0), str(item.get("biomarker_name") or "")))
+    return history
 
 
 def biomarker_detail(user_id: str | None, biomarker_name: str, settings: AgentSettings | None = None) -> dict[str, Any]:
@@ -642,8 +737,13 @@ def _store_biomarker_history(settings: AgentSettings, report_id: int, payload: d
 def _refresh_anomaly_findings(settings: AgentSettings, user_id: str) -> list[dict[str, Any]]:
     rows = supa_select(settings, "biomarker_history", {"user_id": user_id}, select="*", order="report_id.asc,id.asc")
     history = [dict(row) for row in rows]
+    if not history:
+        history = _history_from_report_json(user_id, settings)
     findings = compute_anomaly_findings(history, policy_from_settings(settings))
-    supa_delete(settings, "anomaly_findings", {"user_id": user_id})
+    try:
+        supa_delete(settings, "anomaly_findings", {"user_id": user_id})
+    except Exception:
+        pass
     now = datetime.now().isoformat(timespec="seconds")
     if findings:
         insert_rows = [{
@@ -652,7 +752,10 @@ def _refresh_anomaly_findings(settings: AgentSettings, user_id: str) -> list[dic
             "data_points": json.dumps(f.get("data_points") or [], ensure_ascii=False),
             "metrics_json": json.dumps(f.get("metrics") or {}, ensure_ascii=False), "detected_at": now,
         } for f in findings]
-        supa_insert(settings, "anomaly_findings", insert_rows)
+        try:
+            supa_insert(settings, "anomaly_findings", insert_rows)
+        except Exception:
+            pass
     return findings
 
 

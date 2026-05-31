@@ -83,6 +83,8 @@ export interface MemoryEntry {
 }
 
 export const vaidyApi = {
+    getAuthHeaders,
+
     async getHealth(): Promise<HealthStatus> {
         return apiRequest<HealthStatus>('/api/health');
     },
@@ -177,6 +179,43 @@ export const vaidyApi = {
         });
         if (!response.ok) throw new Error('Upload failed');
         return response.json();
+    },
+
+    async uploadAndWait(file: File, onProgress?: (stage: string) => void): Promise<any> {
+        const uploadResult = await this.upload(file);
+        if (!uploadResult?.progress_url) return uploadResult;
+        const jobId = uploadResult.job_id;
+        const statusUrl = `${API_BASE}/api/upload/status/${jobId}`;
+        onProgress?.('Processing file...');
+        const startTime = Date.now();
+        const maxWait = 180000;
+        while (Date.now() - startTime < maxWait) {
+            await new Promise((r) => setTimeout(r, 2000));
+            try {
+                const elapsed = Math.round((Date.now() - startTime) / 1000);
+                onProgress?.(`Processing... (${elapsed}s)`);
+                const res = await fetch(statusUrl);
+                if (res.status === 404) {
+                    onProgress?.('Processing in background...');
+                    return uploadResult;
+                }
+                if (!res.ok) continue;
+                const data = await res.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                if (data.done) {
+                    onProgress?.('Finalizing...');
+                    return data.result || uploadResult;
+                }
+            } catch (err: any) {
+                if (err.message && !err.message.includes('fetch')) {
+                    throw err;
+                }
+            }
+        }
+        onProgress?.('Processing may still be running in background...');
+        return uploadResult;
     },
 
     async getBiomarker(name: string): Promise<any> {

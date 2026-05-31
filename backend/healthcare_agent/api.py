@@ -333,6 +333,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Upload job not found")
         return StreamingResponse(stream_upload_progress(job), media_type="text/event-stream")
 
+    @app.get("/api/upload/status/{job_id}")
+    def upload_status(job_id: str) -> dict[str, Any]:
+        job = UPLOAD_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Upload job not found")
+        return {
+            "job_id": job.id,
+            "done": job.done,
+            "error": job.error,
+            "result": job.result,
+            "file_label": job.file_label,
+        }
+
     @app.post("/api/sessions/{session_id}/clear-active-report")
     def clear_active_report(session_id: str) -> dict[str, Any]:
         settings: AgentSettings = app.state.agent_settings
