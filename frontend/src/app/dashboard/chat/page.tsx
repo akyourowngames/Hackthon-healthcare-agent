@@ -258,7 +258,7 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="-mx-4 md:-mx-8 lg:-mx-10 -mt-4 md:-mt-8 lg:-mt-10 flex flex-col" style={{ height: 'calc(100vh - 2.5rem)' }}>
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {/* Header Bar */}
             <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-zinc-900/80">
                 <div className="flex items-center gap-4">
@@ -284,7 +284,7 @@ export default function ChatPage() {
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-6 chat-scrollbar" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
                 {chatMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center">
                         <div className="w-14 h-14 border border-zinc-800 flex items-center justify-center rotate-45 mb-5">
@@ -413,6 +413,13 @@ export default function ChatPage() {
                     </button>
                 </div>
             </div>
+            <style>{`
+                .chat-scrollbar::-webkit-scrollbar { width: 6px; }
+                .chat-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .chat-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+                .chat-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+                .chat-scrollbar { scrollbar-width: thin; scrollbar-color: #27272a transparent; }
+            `}</style>
         </div>
     );
 }
